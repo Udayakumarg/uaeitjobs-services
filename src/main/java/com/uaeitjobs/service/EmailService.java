@@ -130,6 +130,9 @@ public class EmailService {
     }
 
     private boolean isProduction() {
+        if (environment == null) {
+            return false;
+        }
         return Arrays.asList(environment.getActiveProfiles()).contains("prod");
     }
 }

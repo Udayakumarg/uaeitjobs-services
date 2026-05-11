@@ -25,6 +25,7 @@ public class JobSeekerService {
     private final SavedJobRepository savedJobRepository;
     private final ApplicationMapper applicationMapper;
     private final FileStorageService fileStorageService;
+    private final EmailService emailService;
 
     @Transactional
     public JobSeekerProfileDTO.Response upsertProfile(User user, JobSeekerProfileDTO.Request request) {
@@ -77,7 +78,12 @@ public class JobSeekerService {
         application.setJob(job);
         application.setUser(user);
         application.setCoverLetter(request.coverLetter());
-        return applicationMapper.toResponse(applicationRepository.save(application));
+        ApplicationEntity saved = applicationRepository.save(application);
+        emailService.sendJobApplicationConfirmation(user.getEmail(), job.getTitle(), job.getCompanyName());
+        if (job.getPostedBy() != null) {
+            emailService.notifyNewApplicant(job.getPostedBy().getEmail(), job.getTitle(), user.getEmail(), user.getEmail());
+        }
+        return applicationMapper.toResponse(saved);
     }
 
     public Page<ApplicationDTO.Response> applications(User user, Pageable pageable) {

@@ -40,7 +40,7 @@ mvn test "-Dspring.profiles.active=test"
 
 The `test` profile uses an in-memory H2 database in PostgreSQL compatibility mode so integration tests run without Docker or a local PostgreSQL service. Production and normal local runs still use PostgreSQL with Flyway migrations.
 
-Testing caveat: H2 does not perfectly emulate PostgreSQL JSONB and full-text search behavior. The enabled suite covers controller wiring, auth, and rate limiting locally; use a real PostgreSQL test database or Testcontainers before changing JSONB queries or Flyway migrations.
+Testing caveat: H2 does not perfectly emulate PostgreSQL JSONB and full-text search behavior. The enabled suite is safe for controller wiring, auth, service-level parsing, email fallback behavior, and rate limiting. It is not sufficient for JSONB queries, full-text search, or Flyway migration validation. Planned action: migrate integration tests to Testcontainers with real PostgreSQL; until then, run full database checks against PostgreSQL with `docker-compose -f docker-compose.test.yml up` before changing JSONB queries or migrations.
 
 ## Docker
 

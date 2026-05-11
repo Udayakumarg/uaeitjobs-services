@@ -3,6 +3,7 @@ package com.uaeitjobs.service;
 import com.uaeitjobs.dto.LinkedInJobData;
 import com.uaeitjobs.exception.ValidationException;
 import org.jsoup.Jsoup;
+import org.jsoup.HttpStatusException;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,6 +17,18 @@ class LinkedInScraperServiceTest {
         assertThatThrownBy(() -> scraperService.scrapeLinkedInJob("https://example.com/jobs/view/123"))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("Invalid LinkedIn job URL");
+    }
+
+    @Test
+    void handlesLinkedInBlockingWith403() {
+        HttpStatusException blocked = new HttpStatusException("Forbidden", 403, "https://www.linkedin.com/jobs/view/3912345678/");
+
+        assertThatThrownBy(() -> {
+            throw scraperService.toValidationException("https://www.linkedin.com/jobs/view/3912345678/", blocked);
+        })
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Failed to scrape LinkedIn job")
+                .hasMessageContaining("Status: 403");
     }
 
     @Test
