@@ -54,7 +54,7 @@ public class AuthService {
         token.setToken(UUID.randomUUID().toString());
         token.setExpiresAt(OffsetDateTime.now().plusDays(1));
         emailVerificationTokenRepository.save(token);
-        emailService.sendVerification(user.getEmail(), token.getToken());
+        emailService.sendVerificationEmail(user.getEmail(), token.getToken());
         return userMapper.toResponse(user);
     }
 
