@@ -7,6 +7,7 @@ import com.uaeitjobs.exception.ValidationException;
 import com.uaeitjobs.mapper.ApplicationMapper;
 import com.uaeitjobs.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class HRService {
@@ -64,13 +66,13 @@ public class HRService {
     }
 
     @Transactional
-    public JobDTO.JobResponse importLinkedIn(User user, String url) {
+    public JobDTO.JobResponse importLinkedIn(User user, String linkedInUrl) {
         LinkedInImport importRecord = new LinkedInImport();
         importRecord.setUser(user);
-        importRecord.setLinkedinJobUrl(url);
+        importRecord.setLinkedinJobUrl(linkedInUrl);
         importRecord = linkedInImportRepository.save(importRecord);
         try {
-            LinkedInJobData scraped = linkedInScraperService.scrapeLinkedInJob(url);
+            LinkedInJobData scraped = linkedInScraperService.scrapeLinkedInJob(linkedInUrl);
             SalaryRange salaryRange = parseSalary(scraped.getSalary());
             JobDTO.JobRequest request = new JobDTO.JobRequest(
                     scraped.getTitle(),
@@ -91,6 +93,7 @@ public class HRService {
             JobDTO.JobResponse response = jobService.create(request, user, "linkedin");
             importRecord.setStatus("processed");
             importRecord.setProcessedAt(OffsetDateTime.now());
+            log.info("LinkedIn job imported: {} by user {}", response.title(), user.getId());
             return response;
         } catch (RuntimeException ex) {
             importRecord.setStatus("failed");
