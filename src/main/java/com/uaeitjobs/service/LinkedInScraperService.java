@@ -38,31 +38,48 @@ public class LinkedInScraperService {
                     .followRedirects(true)
                     .get();
 
-            String title = extractTitle(doc);
-            String companyName = extractCompanyName(doc);
-            String description = extractDescription(doc);
-            String requirements = extractRequirements(doc);
-
-            log.info("Successfully scraped LinkedIn job: {}", title);
-            return LinkedInJobData.builder()
-                    .title(title)
-                    .companyName(companyName)
-                    .description(description)
-                    .requirements(requirements)
-                    .salary(extractSalary(doc))
-                    .skills(extractSkills(description, requirements))
-                    .jobType(extractJobType(doc))
-                    .experienceLevel(extractExperienceLevel(doc))
-                    .linkedInUrl(linkedInUrl)
-                    .build();
-        } catch (org.jsoup.HttpStatusException ex) {
-            log.error("LinkedIn returned HTTP {}: {}", ex.getStatusCode(), linkedInUrl);
-            throw new ValidationException("LinkedIn job not found or blocked. Status: " + ex.getStatusCode());
+            LinkedInJobData jobData = scrapeDocument(doc, linkedInUrl);
+            log.info("Successfully scraped LinkedIn job: {}", jobData.getTitle());
+            return jobData;
         } catch (Exception ex) {
-            log.error("Error scraping LinkedIn job URL: {}", linkedInUrl, ex);
-            throw new ValidationException("Failed to scrape LinkedIn job: " + ex.getMessage());
+            throw toValidationException(linkedInUrl, ex);
         }
     }
+
+    /**
+     * Visible for tests: parses already-fetched LinkedIn-like markup without making a network call.
+     */
+    LinkedInJobData scrapeDocument(Document doc, String linkedInUrl) {
+        String title = extractTitle(doc);
+        String companyName = extractCompanyName(doc);
+        String description = extractDescription(doc);
+        String requirements = extractRequirements(doc);
+
+        return LinkedInJobData.builder()
+                .title(title)
+                .companyName(companyName)
+                .description(description)
+                .requirements(requirements)
+                .salary(extractSalary(doc))
+                .skills(extractSkills(description, requirements))
+                .jobType(extractJobType(doc))
+                .experienceLevel(extractExperienceLevel(doc))
+                .linkedInUrl(linkedInUrl)
+                .build();
+    }
+
+    /**
+     * Visible for tests: keeps network and HTTP failure mapping covered without live LinkedIn calls.
+     */
+    ValidationException toValidationException(String linkedInUrl, Exception ex) {
+        if (ex instanceof org.jsoup.HttpStatusException httpStatusException) {
+            log.error("LinkedIn returned HTTP {}: {}", httpStatusException.getStatusCode(), linkedInUrl);
+            return new ValidationException("Failed to scrape LinkedIn job: LinkedIn job not found or blocked. Status: " + httpStatusException.getStatusCode());
+        }
+        log.error("Error scraping LinkedIn job URL: {}", linkedInUrl, ex);
+        return new ValidationException("Failed to scrape LinkedIn job: " + ex.getMessage());
+    }
+
 
     private String extractTitle(Document doc) {
         String title = textOfFirst(doc,

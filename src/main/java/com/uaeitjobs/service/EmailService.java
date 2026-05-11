@@ -7,11 +7,15 @@ import com.sendgrid.SendGrid;
 import com.sendgrid.helpers.mail.Mail;
 import com.sendgrid.helpers.mail.objects.Content;
 import com.sendgrid.helpers.mail.objects.Email;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.HtmlUtils;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 @Slf4j
 @Service
@@ -20,19 +24,29 @@ public class EmailService {
     private final String fromEmail;
     private final String fromName;
     private final String frontendUrl;
+    private final Environment environment;
 
     public EmailService(@Value("${sendgrid.api-key:}") String sendGridKey,
                         @Value("${sendgrid.from-email:noreply@uaeitjobs.com}") String fromEmail,
                         @Value("${sendgrid.from-name:UAEITJOBS}") String fromName,
-                        @Value("${app.frontend-url:http://localhost:3000}") String frontendUrl) {
+                        @Value("${app.frontend-url:http://localhost:3000}") String frontendUrl,
+                        Environment environment) {
         this.sendGridKey = sendGridKey;
         this.fromEmail = fromEmail;
         this.fromName = fromName;
         this.frontendUrl = frontendUrl;
+        this.environment = environment;
     }
 
     public void sendVerification(String email, String token) {
         sendVerificationEmail(email, token);
+    }
+
+    @PostConstruct
+    void validateProductionConfiguration() {
+        if (isProduction() && (sendGridKey == null || sendGridKey.isBlank())) {
+            throw new IllegalStateException("SENDGRID_API_KEY not configured in production");
+        }
     }
 
     public void sendVerificationEmail(String toEmail, String token) {
@@ -83,7 +97,8 @@ public class EmailService {
 
     private void sendEmailOrLog(String toEmail, String subject, String htmlContent) {
         if (sendGridKey == null || sendGridKey.isBlank()) {
-            log.info("SendGrid key not configured. Email to {} with subject '{}' was not sent.", toEmail, subject);
+            validateProductionConfiguration();
+            log.warn("SendGrid key not configured. Email to {} with subject '{}' was not sent.", toEmail, subject);
             return;
         }
         try {
@@ -117,11 +132,24 @@ public class EmailService {
         if (value == null) {
             return "";
         }
-        return value
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;");
+        return HtmlUtils.htmlEscape(value);
+    }
+
+    private boolean isProduction() {
+        if (environment == null) {
+            return hasProdProfile(System.getProperty("spring.profiles.active"))
+                    || hasProdProfile(System.getenv("SPRING_PROFILES_ACTIVE"));
+        }
+        return Arrays.asList(environment.getActiveProfiles()).contains("prod")
+                || hasProdProfile(environment.getProperty("spring.profiles.active"));
+    }
+
+    private boolean hasProdProfile(String profiles) {
+        if (profiles == null || profiles.isBlank()) {
+            return false;
+        }
+        return Arrays.stream(profiles.split(","))
+                .map(String::trim)
+                .anyMatch("prod"::equalsIgnoreCase);
     }
 }

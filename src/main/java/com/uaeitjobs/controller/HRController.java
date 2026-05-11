@@ -45,7 +45,7 @@ public class HRController {
 
     @PostMapping("/linkedin-import")
     public JobDTO.JobResponse importLinkedIn(@Valid @RequestBody LinkedInImportRequest request) {
-        return hrService.importLinkedIn(currentUserService.get(), request.resolvedUrl());
+        return hrService.importLinkedIn(currentUserService.get(), request.linkedInUrl());
     }
 
     @GetMapping("/subscriptions/current")
@@ -58,13 +58,6 @@ public class HRController {
         return subscriptionService.upgrade(currentUserService.get(), request.tier());
     }
 
-    public record LinkedInImportRequest(String linkedInUrl, String url) {
-        public String resolvedUrl() {
-            String value = linkedInUrl != null ? linkedInUrl : url;
-            if (value == null || value.isBlank()) {
-                throw new IllegalArgumentException("linkedInUrl is required");
-            }
-            return value;
-        }
+    public record LinkedInImportRequest(@NotBlank(message = "LinkedIn URL is required") String linkedInUrl) {
     }
 }
