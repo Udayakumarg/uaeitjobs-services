@@ -1,0 +1,10 @@
+CREATE INDEX idx_jobs_active_created ON jobs(is_active, created_at DESC);
+CREATE INDEX idx_jobs_location ON jobs(location_uae);
+CREATE INDEX idx_jobs_type_level ON jobs(job_type, experience_level);
+CREATE INDEX idx_jobs_posted_by ON jobs(posted_by_id);
+CREATE INDEX idx_applications_job ON applications(job_id);
+CREATE INDEX idx_applications_user ON applications(user_id);
+CREATE INDEX idx_saved_jobs_user ON saved_jobs(user_id);
+CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id);
+CREATE INDEX idx_jobs_skills ON jobs USING gin(skills);
+CREATE INDEX idx_jobs_search ON jobs USING gin(to_tsvector('english', coalesce(title, '') || ' ' || coalesce(description, '') || ' ' || coalesce(requirements, '')));

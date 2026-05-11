@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: uaeitjobs
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/uaeitjobs}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:secret}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  flyway:
+    enabled: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+server:
+  port: ${SERVER_PORT:8080}
+
+app:
+  frontend-domain: ${FRONTEND_DOMAIN:http://localhost:3000}
+  upload-dir: ${UPLOAD_DIR:uploads}
+  jwt:
+    secret: ${JWT_SECRET:change-this-dev-secret-change-this-dev-secret-change-this-dev-secret}
+    access-token-minutes: ${JWT_ACCESS_MINUTES:15}
+    refresh-token-days: ${JWT_REFRESH_DAYS:7}
+  email:
+    verification-base-url: ${EMAIL_VERIFICATION_URL:http://localhost:3000/verify-email}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
