@@ -38,23 +38,9 @@ public class LinkedInScraperService {
                     .followRedirects(true)
                     .get();
 
-            String title = extractTitle(doc);
-            String companyName = extractCompanyName(doc);
-            String description = extractDescription(doc);
-            String requirements = extractRequirements(doc);
-
-            log.info("Successfully scraped LinkedIn job: {}", title);
-            return LinkedInJobData.builder()
-                    .title(title)
-                    .companyName(companyName)
-                    .description(description)
-                    .requirements(requirements)
-                    .salary(extractSalary(doc))
-                    .skills(extractSkills(description, requirements))
-                    .jobType(extractJobType(doc))
-                    .experienceLevel(extractExperienceLevel(doc))
-                    .linkedInUrl(linkedInUrl)
-                    .build();
+            LinkedInJobData jobData = scrapeDocument(doc, linkedInUrl);
+            log.info("Successfully scraped LinkedIn job: {}", jobData.getTitle());
+            return jobData;
         } catch (org.jsoup.HttpStatusException ex) {
             log.error("LinkedIn returned HTTP {}: {}", ex.getStatusCode(), linkedInUrl);
             throw new ValidationException("LinkedIn job not found or blocked. Status: " + ex.getStatusCode());
@@ -62,6 +48,25 @@ public class LinkedInScraperService {
             log.error("Error scraping LinkedIn job URL: {}", linkedInUrl, ex);
             throw new ValidationException("Failed to scrape LinkedIn job: " + ex.getMessage());
         }
+    }
+
+    LinkedInJobData scrapeDocument(Document doc, String linkedInUrl) {
+        String title = extractTitle(doc);
+        String companyName = extractCompanyName(doc);
+        String description = extractDescription(doc);
+        String requirements = extractRequirements(doc);
+
+        return LinkedInJobData.builder()
+                .title(title)
+                .companyName(companyName)
+                .description(description)
+                .requirements(requirements)
+                .salary(extractSalary(doc))
+                .skills(extractSkills(description, requirements))
+                .jobType(extractJobType(doc))
+                .experienceLevel(extractExperienceLevel(doc))
+                .linkedInUrl(linkedInUrl)
+                .build();
     }
 
     private String extractTitle(Document doc) {

@@ -9,9 +9,12 @@ import com.sendgrid.helpers.mail.objects.Content;
 import com.sendgrid.helpers.mail.objects.Email;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.HtmlUtils;
 
 import java.io.IOException;
+import java.util.Arrays;
 
 @Slf4j
 @Service
@@ -20,15 +23,18 @@ public class EmailService {
     private final String fromEmail;
     private final String fromName;
     private final String frontendUrl;
+    private final Environment environment;
 
     public EmailService(@Value("${sendgrid.api-key:}") String sendGridKey,
                         @Value("${sendgrid.from-email:noreply@uaeitjobs.com}") String fromEmail,
                         @Value("${sendgrid.from-name:UAEITJOBS}") String fromName,
-                        @Value("${app.frontend-url:http://localhost:3000}") String frontendUrl) {
+                        @Value("${app.frontend-url:http://localhost:3000}") String frontendUrl,
+                        Environment environment) {
         this.sendGridKey = sendGridKey;
         this.fromEmail = fromEmail;
         this.fromName = fromName;
         this.frontendUrl = frontendUrl;
+        this.environment = environment;
     }
 
     public void sendVerification(String email, String token) {
@@ -83,7 +89,10 @@ public class EmailService {
 
     private void sendEmailOrLog(String toEmail, String subject, String htmlContent) {
         if (sendGridKey == null || sendGridKey.isBlank()) {
-            log.info("SendGrid key not configured. Email to {} with subject '{}' was not sent.", toEmail, subject);
+            if (isProduction()) {
+                throw new IllegalStateException("SENDGRID_API_KEY not configured in production");
+            }
+            log.warn("SendGrid key not configured. Email to {} with subject '{}' was not sent.", toEmail, subject);
             return;
         }
         try {
@@ -117,11 +126,10 @@ public class EmailService {
         if (value == null) {
             return "";
         }
-        return value
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&#39;");
+        return HtmlUtils.htmlEscape(value);
+    }
+
+    private boolean isProduction() {
+        return Arrays.asList(environment.getActiveProfiles()).contains("prod");
     }
 }
