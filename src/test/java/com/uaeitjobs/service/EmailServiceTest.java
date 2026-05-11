@@ -37,4 +37,29 @@ class EmailServiceTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("SENDGRID_API_KEY");
     }
+
+    @Test
+    void missingSendGridKeyFailsWhenEnvironmentIsNullButSystemProfileIsProduction() {
+        String previous = System.getProperty("spring.profiles.active");
+        System.setProperty("spring.profiles.active", "prod");
+        try {
+            EmailService emailService = new EmailService(
+                    "",
+                    "noreply@uaeitjobs.com",
+                    "UAEITJOBS",
+                    "https://uaeitjobs.com",
+                    null
+            );
+
+            assertThatThrownBy(() -> emailService.sendVerificationEmail("user@example.com", "token"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("SENDGRID_API_KEY");
+        } finally {
+            if (previous == null) {
+                System.clearProperty("spring.profiles.active");
+            } else {
+                System.setProperty("spring.profiles.active", previous);
+            }
+        }
+    }
 }

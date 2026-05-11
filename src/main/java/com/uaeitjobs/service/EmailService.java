@@ -137,8 +137,19 @@ public class EmailService {
 
     private boolean isProduction() {
         if (environment == null) {
+            return hasProdProfile(System.getProperty("spring.profiles.active"))
+                    || hasProdProfile(System.getenv("SPRING_PROFILES_ACTIVE"));
+        }
+        return Arrays.asList(environment.getActiveProfiles()).contains("prod")
+                || hasProdProfile(environment.getProperty("spring.profiles.active"));
+    }
+
+    private boolean hasProdProfile(String profiles) {
+        if (profiles == null || profiles.isBlank()) {
             return false;
         }
-        return Arrays.asList(environment.getActiveProfiles()).contains("prod");
+        return Arrays.stream(profiles.split(","))
+                .map(String::trim)
+                .anyMatch("prod"::equalsIgnoreCase);
     }
 }
