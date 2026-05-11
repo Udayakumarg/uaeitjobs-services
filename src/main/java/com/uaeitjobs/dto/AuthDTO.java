@@ -30,7 +30,7 @@ public final class AuthDTO {
     public record VerifyEmailRequest(@NotBlank String token) {
     }
 
-    public record UserResponse(Long id, String email, UserType userType, String phone, String country, boolean verified, OffsetDateTime createdAt) {
+    public record UserResponse(Long id, String email, String displayName, UserType userType, String phone, String country, boolean verified, OffsetDateTime createdAt) {
     }
 
     public record AuthResponse(String accessToken, String refreshToken, UserResponse user) {

@@ -45,7 +45,7 @@ public class HRController {
 
     @PostMapping("/linkedin-import")
     public JobDTO.JobResponse importLinkedIn(@Valid @RequestBody LinkedInImportRequest request) {
-        return hrService.importLinkedIn(currentUserService.get(), request.url());
+        return hrService.importLinkedIn(currentUserService.get(), request.linkedInUrl());
     }
 
     @GetMapping("/subscriptions/current")
@@ -58,6 +58,6 @@ public class HRController {
         return subscriptionService.upgrade(currentUserService.get(), request.tier());
     }
 
-    public record LinkedInImportRequest(@NotBlank String url) {
+    public record LinkedInImportRequest(@NotBlank(message = "LinkedIn URL is required") String linkedInUrl) {
     }
 }
