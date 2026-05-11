@@ -51,6 +51,11 @@ public class JobService {
 
     @Transactional
     public JobDTO.JobResponse create(JobDTO.JobRequest request, User user) {
+        return create(request, user, "manual");
+    }
+
+    @Transactional
+    public JobDTO.JobResponse create(JobDTO.JobRequest request, User user, String source) {
         if (!user.isVerified()) {
             throw new ValidationException("Verify email before posting jobs");
         }
@@ -58,7 +63,7 @@ public class JobService {
         Job job = apply(new Job(), request);
         job.setSlug(uniqueSlug(request.title()));
         job.setPostedBy(user);
-        job.setSource("manual");
+        job.setSource(source);
         Job saved = jobRepository.save(job);
         subscriptionService.incrementPosted(user);
         return jobMapper.toResponse(saved);

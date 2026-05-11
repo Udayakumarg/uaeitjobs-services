@@ -30,6 +30,16 @@ http://localhost:8080/swagger-ui.html
 mvn clean package
 ```
 
+## Test
+
+PowerShell needs the Spring profile flag quoted:
+
+```bash
+mvn test "-Dspring.profiles.active=test"
+```
+
+The `test` profile uses an in-memory H2 database in PostgreSQL compatibility mode so integration tests run without Docker or a local PostgreSQL service. Production and normal local runs still use PostgreSQL with Flyway migrations.
+
 ## Docker
 
 ```bash
@@ -58,11 +68,12 @@ Seed accounts:
 - Public jobs: list, detail with view count, search, filters, skills, locations, stats
 - Auth: register, login, refresh, logout, email verification token flow
 - Job seeker: profile, CV upload, skills, applications, saved jobs
-- HR: profile, post/update/delete jobs, applicants, application status, LinkedIn import placeholder, subscriptions
+- HR: profile, post/update/delete jobs, applicants, application status, LinkedIn import, subscriptions
 - Admin: stats, users, job approval toggle, user delete
 
 ## Notes
 
-- LinkedIn import validates LinkedIn job URLs and creates a review-ready placeholder job. Real scraping/API use should be added behind `LinkedInScraperService` once an approved data source is chosen.
-- `EmailService` logs verification links by default. Swap it for SendGrid or Resend in production.
-- Integration test skeleton is included but disabled until a PostgreSQL test database is configured, so production Flyway JSONB and full-text indexes are tested honestly.
+- LinkedIn import fetches public LinkedIn job pages with Jsoup and extracts title, company, description, requirements, salary hints, skills, job type, and experience level. LinkedIn may still block scraping for some pages; those failures are stored on the import record.
+- `EmailService` sends through SendGrid when `SENDGRID_API_KEY` is configured. Without a key, local/dev runs log a no-op instead of failing registration.
+- Auth login, register, and refresh are limited to 5 requests per minute per client IP with Bucket4j.
+- Integration tests are enabled for auth, public jobs, and rate limiting under the `test` profile.

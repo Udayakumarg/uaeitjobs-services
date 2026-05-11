@@ -55,6 +55,6 @@ class AuthServiceTest {
         authService.register(new AuthDTO.RegisterRequest("hr@demo.com", "password123", UserType.hr, null, "UAE"));
 
         verify(emailVerificationTokenRepository).save(any());
-        verify(emailService).sendVerification(eq("hr@demo.com"), any());
+        verify(emailService).sendVerificationEmail(eq("hr@demo.com"), any());
     }
 }
