@@ -1,6 +1,7 @@
 package com.uaeitjobs.service;
 
 import com.uaeitjobs.dto.ApplicationDTO;
+import com.uaeitjobs.entity.ApplicationStatus;
 import com.uaeitjobs.entity.ApplicationEntity;
 import com.uaeitjobs.entity.Job;
 import com.uaeitjobs.entity.User;
@@ -16,6 +17,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
+import java.time.OffsetDateTime;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -36,6 +38,7 @@ class JobSeekerServiceTest {
         User applicant = new User();
         applicant.setId(1L);
         applicant.setEmail("applicant@uaeitjobs.com");
+        applicant.setDisplayName("Asha Applicant");
         User hr = new User();
         hr.setId(2L);
         hr.setEmail("hr@uaeitjobs.com");
@@ -48,10 +51,12 @@ class JobSeekerServiceTest {
         when(jobRepository.findByIdAndActiveTrue(10L)).thenReturn(Optional.of(job));
         when(applicationRepository.existsByJobAndUser(job, applicant)).thenReturn(false);
         when(applicationRepository.save(any(ApplicationEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(applicationMapper.toResponse(any(ApplicationEntity.class)))
+                .thenReturn(new ApplicationDTO.Response(1L, null, null, "Hello", OffsetDateTime.now(), ApplicationStatus.applied));
 
         jobSeekerService.apply(applicant, new ApplicationDTO.Request(10L, "Hello"));
 
         verify(emailService).sendJobApplicationConfirmation("applicant@uaeitjobs.com", "Java Developer", "Emirates Cloud Labs");
-        verify(emailService).notifyNewApplicant("hr@uaeitjobs.com", "Java Developer", "applicant@uaeitjobs.com", "applicant@uaeitjobs.com");
+        verify(emailService).notifyNewApplicant("hr@uaeitjobs.com", "Java Developer", "Asha Applicant", "applicant@uaeitjobs.com");
     }
 }

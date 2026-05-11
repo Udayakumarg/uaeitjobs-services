@@ -68,6 +68,9 @@ public class LinkedInScraperService {
                 .build();
     }
 
+    /**
+     * Visible for tests: keeps network and HTTP failure mapping covered without live LinkedIn calls.
+     */
     ValidationException toValidationException(String linkedInUrl, Exception ex) {
         if (ex instanceof org.jsoup.HttpStatusException httpStatusException) {
             log.error("LinkedIn returned HTTP {}: {}", httpStatusException.getStatusCode(), linkedInUrl);

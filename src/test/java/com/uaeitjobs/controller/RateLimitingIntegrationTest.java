@@ -38,4 +38,23 @@ class RateLimitingIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.error").value("Rate limit exceeded. Max 5 requests per minute."));
     }
+
+    @Test
+    void keepsSeparateBucketsForDifferentForwardedIps() throws Exception {
+        String body = objectMapper.writeValueAsString(new AuthDTO.LoginRequest("missing-ip-isolation@uaeitjobs.com", "wrong"));
+
+        for (int i = 0; i < 5; i++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                            .header("X-Forwarded-For", "10.0.2.99")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-Forwarded-For", "10.0.2.100")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isUnauthorized());
+    }
 }

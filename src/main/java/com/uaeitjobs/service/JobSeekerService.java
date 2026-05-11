@@ -81,7 +81,7 @@ public class JobSeekerService {
         ApplicationEntity saved = applicationRepository.save(application);
         emailService.sendJobApplicationConfirmation(user.getEmail(), job.getTitle(), job.getCompanyName());
         if (job.getPostedBy() != null) {
-            emailService.notifyNewApplicant(job.getPostedBy().getEmail(), job.getTitle(), user.getEmail(), user.getEmail());
+            emailService.notifyNewApplicant(job.getPostedBy().getEmail(), job.getTitle(), applicantName(user), user.getEmail());
         }
         return applicationMapper.toResponse(saved);
     }
@@ -117,5 +117,14 @@ public class JobSeekerService {
 
     private String defaultJson(String value) {
         return value == null || value.isBlank() ? "[]" : value;
+    }
+
+    private String applicantName(User user) {
+        if (user.getDisplayName() != null && !user.getDisplayName().isBlank()) {
+            return user.getDisplayName();
+        }
+        String email = user.getEmail();
+        int at = email == null ? -1 : email.indexOf('@');
+        return at > 0 ? email.substring(0, at) : email;
     }
 }

@@ -7,6 +7,7 @@ import com.sendgrid.SendGrid;
 import com.sendgrid.helpers.mail.Mail;
 import com.sendgrid.helpers.mail.objects.Content;
 import com.sendgrid.helpers.mail.objects.Email;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.env.Environment;
@@ -39,6 +40,13 @@ public class EmailService {
 
     public void sendVerification(String email, String token) {
         sendVerificationEmail(email, token);
+    }
+
+    @PostConstruct
+    void validateProductionConfiguration() {
+        if (isProduction() && (sendGridKey == null || sendGridKey.isBlank())) {
+            throw new IllegalStateException("SENDGRID_API_KEY not configured in production");
+        }
     }
 
     public void sendVerificationEmail(String toEmail, String token) {
@@ -89,9 +97,7 @@ public class EmailService {
 
     private void sendEmailOrLog(String toEmail, String subject, String htmlContent) {
         if (sendGridKey == null || sendGridKey.isBlank()) {
-            if (isProduction()) {
-                throw new IllegalStateException("SENDGRID_API_KEY not configured in production");
-            }
+            validateProductionConfiguration();
             log.warn("SendGrid key not configured. Email to {} with subject '{}' was not sent.", toEmail, subject);
             return;
         }
