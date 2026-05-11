@@ -49,6 +49,8 @@ docker compose -f docker-compose.test.yml up -d
 DB_URL=jdbc:postgresql://localhost:5433/uaeitjobs_test DB_USERNAME=postgres DB_PASSWORD=test mvn test -Dspring.profiles.active=test
 ```
 
+The test database binds host port `5433` to avoid conflicts with a local PostgreSQL server already using `5432`. Its data is stored on `tmpfs`, so it is intentionally ephemeral and resets when the container restarts.
+
 ## Docker
 
 ```bash
