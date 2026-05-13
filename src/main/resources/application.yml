@@ -2,9 +2,9 @@ spring:
   application:
     name: uaeitjobs
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/uaeitjobs}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:secret}
+    url: ${DB_URL:${DATABASE_URL:jdbc:postgresql://localhost:5432/uaeitjobs}}
+    username: ${DB_USERNAME:${DATABASE_USER:postgres}}
+    password: ${DB_PASSWORD:${DATABASE_PASSWORD:secret}}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -20,7 +20,7 @@ spring:
       max-request-size: 10MB
 
 server:
-  port: ${SERVER_PORT:8080}
+  port: ${SERVER_PORT:${PORT:8080}}
 
 app:
   frontend-url: ${APP_FRONTEND_URL:${FRONTEND_DOMAIN:http://localhost:3000}}

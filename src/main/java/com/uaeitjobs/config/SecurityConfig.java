@@ -49,7 +49,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/jobs").hasRole("HR")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/jobs/**").hasRole("HR")
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/jobs/**").hasRole("HR")
-                        .requestMatchers("/api/v1/job-seeker/**", "/api/v1/applications/**", "/api/v1/saved-jobs/**").hasAnyRole("JOB_SEEKER", "HR")
+                        .requestMatchers("/api/v1/job-seeker/**", "/api/v1/saved-jobs/**").hasRole("JOB_SEEKER")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/applications").hasRole("JOB_SEEKER")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/applications").hasRole("JOB_SEEKER")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/applications/**").hasRole("HR")
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
@@ -58,7 +61,7 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(frontendDomain, "http://localhost:3000", "http://localhost:5173"));
+        config.setAllowedOrigins(List.of(frontendDomain, "http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173"));
         config.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         config.setAllowCredentials(true);
