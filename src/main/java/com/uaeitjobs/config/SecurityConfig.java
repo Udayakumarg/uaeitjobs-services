@@ -31,7 +31,7 @@ public class SecurityConfig {
     private final JwtAuthenticationEntryPoint entryPoint;
     private final CustomAccessDeniedHandler accessDeniedHandler;
     @Value("${app.frontend-domain}")
-    private String frontendDomain;
+    private String frontendDomain;   // comma-separated for multi-origin support
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -61,7 +61,12 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of(frontendDomain, "http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173"));
+        List<String> origins = new java.util.ArrayList<>(List.of("http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173"));
+        for (String origin : frontendDomain.split(",")) {
+            String trimmed = origin.trim();
+            if (!trimmed.isEmpty()) origins.add(trimmed);
+        }
+        config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("Authorization", "Content-Type"));
         config.setAllowCredentials(true);
