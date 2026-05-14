@@ -16,7 +16,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -111,7 +113,7 @@ public class JobService {
         job.setJobType(request.jobType());
         job.setExperienceLevel(request.experienceLevel());
         job.setLocationUae(request.locationUae());
-        job.setSkills(request.skills() == null ? "[]" : request.skills());
+        job.setSkills(normalizeSkills(request.skills()));
         job.setLinkedinUrl(request.linkedinUrl());
         job.setFeatured(Boolean.TRUE.equals(request.featured()));
         job.setExpiresAt(request.expiresAt());
@@ -130,5 +132,26 @@ public class JobService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    /**
+     * Accepts either a JSON array string ("[\"react\",\"java\"]") or a
+     * comma-separated plain string ("react, java") and always returns a
+     * valid JSON array string so the jsonb column is satisfied.
+     */
+    private String normalizeSkills(String skills) {
+        if (skills == null || skills.isBlank()) return "[]";
+        String trimmed = skills.trim();
+        if (trimmed.startsWith("[")) {
+            // Already a JSON array — trust it as-is
+            return trimmed;
+        }
+        // Plain comma-separated — wrap each token in quotes
+        String jsonArray = Arrays.stream(trimmed.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(s -> "\"" + s.replace("\"", "\\\"") + "\"")
+                .collect(Collectors.joining(",", "[", "]"));
+        return jsonArray;
     }
 }
