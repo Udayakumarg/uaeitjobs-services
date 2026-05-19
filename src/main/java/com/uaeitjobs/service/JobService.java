@@ -13,6 +13,7 @@ import com.uaeitjobs.util.JobCategoryClassifier;
 import com.uaeitjobs.util.SlugGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +49,10 @@ public class JobService {
     public Page<JobDTO.JobResponse> filter(String type, String level, String location, String skill,
                                            String visaType, String emirate, Boolean immediateJoiner, Boolean remoteUae,
                                            String category, Pageable pageable) {
+        // Strip the JPA-style Sort — the native filter query owns its own
+        // ORDER BY, and Spring would otherwise append `order by createdAt`
+        // (camelCase property) which fails against the snake_case column.
+        Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         return jobRepository.filter(
                 blankToNull(type),
                 blankToNull(level),
@@ -58,14 +63,16 @@ public class JobService {
                 Boolean.TRUE.equals(immediateJoiner) ? Boolean.TRUE : null,
                 Boolean.TRUE.equals(remoteUae) ? Boolean.TRUE : null,
                 blankToNull(category),
-                pageable).map(jobMapper::toResponse);
+                unsorted).map(jobMapper::toResponse);
     }
 
     public Page<JobDTO.JobResponse> search(String query, Pageable pageable) {
         if (query == null || query.isBlank()) {
             return list(pageable);
         }
-        return jobRepository.search(query, pageable).map(jobMapper::toResponse);
+        // Search native query has its own ORDER BY (ts_rank) — strip Sort.
+        Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+        return jobRepository.search(query, unsorted).map(jobMapper::toResponse);
     }
 
     @Transactional

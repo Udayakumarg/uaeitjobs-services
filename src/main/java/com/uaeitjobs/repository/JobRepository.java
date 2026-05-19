@@ -25,16 +25,31 @@ public interface JobRepository extends JpaRepository<Job, Long> {
     @Query(value = """
         select * from jobs j
         where j.is_active = true
-          and (:type is null or j.job_type = :type)
-          and (:level is null or j.experience_level = :level)
-          and (:location is null or lower(j.location_uae) like lower(concat('%', :location, '%')))
-          and (:skill is null or j.skills::text ilike concat('%', :skill, '%'))
-          and (:visaType is null or j.visa_type = :visaType)
-          and (:emirate is null or j.emirate = :emirate)
-          and (:immediateJoiner is null or j.immediate_joiner = :immediateJoiner)
-          and (:remoteUae is null or j.remote_uae = :remoteUae)
-          and (:category is null or j.job_category = :category)
-        """, nativeQuery = true)
+          and (cast(:type as varchar) is null or j.job_type = :type)
+          and (cast(:level as varchar) is null or j.experience_level = :level)
+          and (cast(:location as varchar) is null or lower(j.location_uae) like lower(concat('%', :location, '%')))
+          and (cast(:skill as varchar) is null or j.skills::text ilike concat('%', :skill, '%'))
+          and (cast(:visaType as varchar) is null or j.visa_type = :visaType)
+          and (cast(:emirate as varchar) is null or j.emirate = :emirate)
+          and (cast(:immediateJoiner as boolean) is null or j.immediate_joiner = :immediateJoiner)
+          and (cast(:remoteUae as boolean) is null or j.remote_uae = :remoteUae)
+          and (cast(:category as varchar) is null or j.job_category = :category)
+        order by j.created_at desc
+        """,
+        countQuery = """
+        select count(*) from jobs j
+        where j.is_active = true
+          and (cast(:type as varchar) is null or j.job_type = :type)
+          and (cast(:level as varchar) is null or j.experience_level = :level)
+          and (cast(:location as varchar) is null or lower(j.location_uae) like lower(concat('%', :location, '%')))
+          and (cast(:skill as varchar) is null or j.skills::text ilike concat('%', :skill, '%'))
+          and (cast(:visaType as varchar) is null or j.visa_type = :visaType)
+          and (cast(:emirate as varchar) is null or j.emirate = :emirate)
+          and (cast(:immediateJoiner as boolean) is null or j.immediate_joiner = :immediateJoiner)
+          and (cast(:remoteUae as boolean) is null or j.remote_uae = :remoteUae)
+          and (cast(:category as varchar) is null or j.job_category = :category)
+        """,
+        nativeQuery = true)
     Page<Job> filter(@Param("type") String type,
                      @Param("level") String level,
                      @Param("location") String location,
