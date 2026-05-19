@@ -77,7 +77,7 @@ public class JSearchSource {
 
     private List<IngestedJob> fetchPage(String keyword, int page) {
         String url = UriComponentsBuilder
-                .fromUriString("https://jsearch.p.rapidapi.com/search")
+                .fromUriString("https://jsearch.p.rapidapi.com/search-v2")
                 .queryParam("query", keyword)
                 .queryParam("page", page)
                 .queryParam("num_pages", 1)
