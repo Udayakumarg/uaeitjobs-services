@@ -17,6 +17,7 @@ public interface JobRepository extends JpaRepository<Job, Long> {
     Page<Job> findByPostedBy(User user, Pageable pageable);
     Optional<Job> findByIdAndActiveTrue(Long id);
     boolean existsBySlug(String slug);
+    boolean existsByApplyUrl(String applyUrl);
 
     @Modifying
     @Query("update Job j set j.viewCount = j.viewCount + 1 where j.id = :id")

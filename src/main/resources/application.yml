@@ -26,6 +26,18 @@ app:
   frontend-url: ${APP_FRONTEND_URL:${FRONTEND_DOMAIN:http://localhost:3000}}
   frontend-domain: ${FRONTEND_DOMAIN:http://localhost:3000,http://localhost:5173}
   upload-dir: ${UPLOAD_DIR:uploads}
+  ingest:
+    adzuna:
+      enabled: ${ADZUNA_ENABLED:true}
+      app-id: ${ADZUNA_APP_ID:}
+      app-key: ${ADZUNA_APP_KEY:}
+      pages: ${ADZUNA_PAGES:3}
+    remoteok:
+      enabled: ${REMOTEOK_ENABLED:true}
+  cron:
+    ingest-jobs: ${CRON_INGEST_JOBS:0 0 */6 * * *}
+    expire-stale-jobs: ${CRON_EXPIRE_STALE:0 0 2 * * *}
+    refresh-active-jobs: ${CRON_REFRESH_ACTIVE:0 15 2 * * *}
   jwt:
     secret: ${JWT_SECRET:change-this-dev-secret-change-this-dev-secret-change-this-dev-secret}
     access-token-minutes: ${JWT_ACCESS_MINUTES:15}

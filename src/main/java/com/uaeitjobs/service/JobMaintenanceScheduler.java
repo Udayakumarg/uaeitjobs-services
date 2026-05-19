@@ -1,11 +1,14 @@
 package com.uaeitjobs.service;
 
+import com.uaeitjobs.service.ingest.JobIngestService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Map;
 
 /**
  * Scheduled tasks that keep the job catalog healthy without manual ops.
@@ -19,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class JobMaintenanceScheduler {
 
     private final JdbcTemplate jdbc;
+    private final JobIngestService jobIngestService;
 
     /**
      * Deactivate jobs that have crossed their expires_at timestamp.
@@ -54,12 +58,18 @@ public class JobMaintenanceScheduler {
     }
 
     /**
-     * Placeholder for future scrape automation — wire in your LinkedIn /
-     * RSS / aggregator ingestion here once a source list is available.
-     * Schedule disabled by default so it does nothing until configured.
+     * Real job ingestion — fans out to every enabled JobIngestSource
+     * (Adzuna, RemoteOK, …). Runs every 6 hours by default so we stay
+     * well inside Adzuna's free-tier quota of 1000 calls/day.
      */
-    @Scheduled(cron = "${app.cron.import-external-jobs:-}", zone = "UTC")
-    public void importExternalJobs() {
-        log.debug("Cron: external-import slot fired — no source configured.");
+    @Scheduled(cron = "${app.cron.ingest-jobs:0 0 */6 * * *}", zone = "UTC")
+    public void ingestExternalJobs() {
+        Map<String, Integer> report = jobIngestService.runAll();
+        int total = report.values().stream().mapToInt(Integer::intValue).sum();
+        if (total > 0) {
+            log.info("Cron: ingested {} new job(s) across sources: {}", total, report);
+        } else {
+            log.info("Cron: ingest finished with no new jobs ({})", report);
+        }
     }
 }

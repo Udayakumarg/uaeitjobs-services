@@ -4,6 +4,7 @@ import com.uaeitjobs.dto.AdminDTO;
 import com.uaeitjobs.service.AdminService;
 import com.uaeitjobs.service.CurrentUserService;
 import com.uaeitjobs.service.DemoJobSeedService;
+import com.uaeitjobs.service.ingest.JobIngestService;
 import com.uaeitjobs.util.PageUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -19,6 +20,7 @@ public class AdminController {
     private final AdminService adminService;
     private final DemoJobSeedService demoJobSeedService;
     private final CurrentUserService currentUserService;
+    private final JobIngestService jobIngestService;
 
     @GetMapping("/stats")
     public AdminDTO.StatsResponse stats() {
@@ -65,5 +67,22 @@ public class AdminController {
                 "purged", purged,
                 "created", created
         );
+    }
+
+    /** Hard-delete every demo job posting. */
+    @DeleteMapping("/seed/demo-jobs")
+    public Map<String, Object> purgeDemoJobs() {
+        int purged = demoJobSeedService.purgeDemoJobs();
+        return Map.of("purged", purged);
+    }
+
+    /**
+     * Manually trigger one ingest pass across every enabled source.
+     * Useful right after deploy when you don't want to wait for the
+     * next 6-hour cron tick.
+     */
+    @PostMapping("/ingest/run")
+    public Map<String, Integer> runIngest() {
+        return jobIngestService.runAll();
     }
 }
