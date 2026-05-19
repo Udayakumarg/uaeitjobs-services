@@ -82,7 +82,7 @@ public class AdminController {
      * next 6-hour cron tick.
      */
     @PostMapping("/ingest/run")
-    public Map<String, Integer> runIngest() {
+    public Map<String, Object> runIngest() {
         return jobIngestService.runAll();
     }
 }

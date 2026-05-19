@@ -175,6 +175,7 @@ public class AdzunaSource implements JobIngestSource {
         return new IngestedJob(
                 externalId,
                 name(),
+                "Adzuna",
                 title,
                 company,
                 description == null || description.isBlank() ? title : description,

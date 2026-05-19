@@ -115,6 +115,7 @@ public class HimalayasSource implements JobIngestSource {
         return new IngestedJob(
                 externalId,
                 name(),
+                "Himalayas",
                 title,
                 company,
                 description,

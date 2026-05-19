@@ -1,198 +1,174 @@
 package com.uaeitjobs.service.ingest;
 
-import com.uaeitjobs.entity.Job;
-import com.uaeitjobs.repository.JobRepository;
-import com.uaeitjobs.util.JobCategoryClassifier;
-import com.uaeitjobs.util.SlugGenerator;
+import com.uaeitjobs.entity.IngestRunLog;
+import com.uaeitjobs.entity.KeywordSearchStrategy;
+import com.uaeitjobs.repository.IngestRunLogRepository;
+import com.uaeitjobs.repository.KeywordSearchStrategyRepository;
+import com.uaeitjobs.service.ingest.pipeline.DedupResolver;
+import com.uaeitjobs.service.ingest.pipeline.JobIngestPipeline;
+import com.uaeitjobs.service.ingest.pipeline.JobIngestPipeline.Outcome;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
- * Iterates every registered JobIngestSource, deduplicates by apply_url,
- * runs auto-categorisation, and persists new postings. Returns a summary
- * map per source so we can log + expose via the admin endpoint.
+ * Orchestrates every ingestion pass:
+ *  - Iterates each enabled JobIngestSource (Adzuna, RemoteOK, Himalayas)
+ *  - Drives the JSearch keyword rotation
+ *  - Pipes every IngestedJob through JobIngestPipeline (the intelligence layer)
+ *  - Records per-run metrics in ingest_run_log + keyword_search_strategy counters
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class JobIngestService {
 
-    /** Title substrings that almost always indicate a non-IT role. Even
-     *  Adzuna's it-jobs category occasionally lets these slip through. */
-    private static final List<String> NON_IT_TITLE_BLOCKLIST = List.of(
-            "insurance",
-            "underwriter",
-            "actuary",
-            "claims",
-            "license agent",
-            "sales executive",
-            "sales associate",
-            "sales manager",
-            "sales representative",
-            "account executive",
-            "marketing manager",
-            "marketing executive",
-            "social media",
-            "telesales",
-            "telemarketing",
-            "receptionist",
-            "secretary",
-            "executive assistant",
-            "admin assistant",
-            "office assistant",
-            "office manager",
-            "personal assistant",
-            "accountant",
-            "bookkeeper",
-            "tax associate",
-            "financial advisor",
-            "wealth manager",
-            "banker",
-            "teller",
-            "cashier",
-            "barista",
-            "waiter",
-            "waitress",
-            "chef",
-            "cook",
-            "driver",
-            "delivery rider",
-            "warehouse",
-            "logistics coordinator",
-            "facilities",
-            "housekeep",
-            "nurse",
-            "physician",
-            "pharmacist",
-            "dentist",
-            "doctor",
-            "teacher",
-            "tutor",
-            "lecturer",
-            "translator",
-            "interpreter",
-            "lawyer",
-            "paralegal",
-            "legal counsel",
-            "merchandiser",
-            "store manager",
-            "retail manager",
-            "human resources",
-            "hr manager",
-            "hr executive",
-            "talent acquisition",
-            "recruiter",
-            "real estate"
-    );
-
     private final List<JobIngestSource> sources;
-    private final JobRepository jobRepository;
+    private final JSearchSource jsearch;
+    private final JobIngestPipeline pipeline;
+    private final KeywordSearchStrategyRepository keywordRepo;
+    private final IngestRunLogRepository runLogRepo;
 
-    @Transactional
-    public Map<String, Integer> runAll() {
-        return runAll(sources);
-    }
+    /** Per-cron run: keyword-driven JSearch first, then the legacy sources. */
+    public Map<String, Object> runAll() {
+        LinkedHashMap<String, Object> report = new LinkedHashMap<>();
 
-    @Transactional
-    public Map<String, Integer> runAll(List<JobIngestSource> sourcesToRun) {
-        java.util.LinkedHashMap<String, Integer> report = new java.util.LinkedHashMap<>();
-        for (JobIngestSource source : sourcesToRun) {
-            int created = 0;
+        // ── JSearch (keyword rotation) ────────────────────────
+        if (jsearch.isEnabled()) {
+            List<KeywordSearchStrategy> picks = pickKeywordRotation();
+            int totalCreated = 0;
+            for (KeywordSearchStrategy kw : picks) {
+                Counters c = runJSearchForKeyword(kw);
+                totalCreated += c.inserted;
+            }
+            report.put("jsearch", totalCreated);
+        } else {
+            report.put("jsearch", 0);
+        }
+
+        // ── Other sources (no keywords, single fetch each) ────
+        for (JobIngestSource source : sources) {
             if (!source.isEnabled()) {
-                log.debug("Source {} is disabled — skipping.", source.name());
                 report.put(source.name(), 0);
                 continue;
             }
-            List<IngestedJob> batch;
-            try {
-                batch = source.fetch();
-            } catch (Exception ex) {
-                log.warn("Source {} threw on fetch: {}", source.name(), ex.getMessage());
-                report.put(source.name(), 0);
-                continue;
-            }
-            int rejectedTitle = 0;
-            int rejectedCategory = 0;
-            for (IngestedJob incoming : batch) {
-                if (incoming.applyUrl() == null || incoming.applyUrl().isBlank()) continue;
-                if (jobRepository.existsByApplyUrl(incoming.applyUrl())) continue;
-                if (!isItRole(incoming.title())) { rejectedTitle++; continue; }
-                String category = JobCategoryClassifier.classify(incoming.title(), incoming.description());
-                if (category == null || JobCategoryClassifier.OTHER.equals(category)) {
-                    rejectedCategory++; continue;
-                }
-                try {
-                    persist(incoming, category);
-                    created++;
-                } catch (Exception ex) {
-                    log.warn("Failed to persist '{}' from {}: {}", incoming.title(), source.name(), ex.getMessage());
-                }
-            }
-            if (rejectedTitle + rejectedCategory > 0) {
-                log.info("Ingest [{}] — rejected {} non-IT title(s) and {} uncategorisable role(s).",
-                        source.name(), rejectedTitle, rejectedCategory);
-            }
-            report.put(source.name(), created);
-            log.info("Ingest [{}] — fetched={} created={}", source.name(), batch.size(), created);
+            Counters c = runGeneric(source);
+            report.put(source.name(), c.inserted);
         }
         return report;
     }
 
-    private void persist(IngestedJob incoming, String category) {
-        Job job = new Job();
-        job.setSlug(uniqueSlug(incoming.title()));
-        job.setTitle(incoming.title());
-        job.setCompanyName(incoming.companyName());
-        job.setDescription(incoming.description());
-        job.setRequirements(incoming.requirements());
-        job.setSalaryMin(incoming.salaryMin());
-        job.setSalaryMax(incoming.salaryMax());
-        job.setSalaryCurrency(incoming.salaryCurrency() == null ? "AED" : incoming.salaryCurrency());
-        job.setJobType(incoming.jobType());
-        job.setExperienceLevel(incoming.experienceLevel());
-        job.setLocationUae(incoming.locationUae());
-        job.setSkills("[]");
-        job.setSource(incoming.source());
-        job.setApplyUrl(incoming.applyUrl());
-        job.setLinkedinUrl(null);
-        job.setActive(true);
-        job.setFeatured(false);
-        job.setExpiresAt(OffsetDateTime.now().plusDays(30));
-        job.setEmirate(incoming.emirate());
-        job.setRemoteUae(incoming.remoteUae());
-        job.setImmediateJoiner(false);
-        job.setJobCategory(category);
-        jobRepository.save(job);
+    // ─── JSearch keyword-driven run ──────────────────────────
+    private List<KeywordSearchStrategy> pickKeywordRotation() {
+        // 4 from T1, 2 from T2, 1 from T3, 1 from T4 — total 8
+        var t1 = keywordRepo.pickByTier(1, 4);
+        var t2 = keywordRepo.pickByTier(2, 2);
+        var t3 = keywordRepo.pickByTier(3, 1);
+        var t4 = keywordRepo.pickByTier(4, 1);
+        var combined = new java.util.ArrayList<KeywordSearchStrategy>(8);
+        combined.addAll(t1); combined.addAll(t2); combined.addAll(t3); combined.addAll(t4);
+        return combined;
     }
 
-    /** Rejects job titles that are almost certainly not IT roles. */
-    private static boolean isItRole(String title) {
-        if (title == null || title.isBlank()) return false;
-        String lower = title.toLowerCase(Locale.ROOT);
-        for (String blocked : NON_IT_TITLE_BLOCKLIST) {
-            if (lower.contains(blocked)) return false;
+    @Transactional
+    public Counters runJSearchForKeyword(KeywordSearchStrategy kw) {
+        IngestRunLog runLog = openLog("jsearch", kw.getKeyword());
+        Counters c = new Counters();
+        try {
+            List<IngestedJob> batch = jsearch.search(kw.getKeyword());
+            c.fetched = batch.size();
+            for (IngestedJob raw : batch) {
+                Outcome outcome = pipeline.process(raw);
+                tally(c, outcome);
+            }
+            // Update keyword counters
+            kw.setTotalRuns(kw.getTotalRuns() + 1);
+            kw.setTotalReturned(kw.getTotalReturned() + c.fetched);
+            kw.setTotalInserted(kw.getTotalInserted() + c.inserted);
+            kw.setTotalDuplicates(kw.getTotalDuplicates()
+                    + c.duplicatesL1 + c.duplicatesL2 + c.duplicatesL3);
+            kw.setLastRunAt(OffsetDateTime.now());
+            kw.setLastError(null);
+            keywordRepo.save(kw);
+        } catch (Exception e) {
+            log.warn("JSearch keyword '{}' failed: {}", kw.getKeyword(), e.getMessage());
+            runLog.setError(e.getMessage());
+            kw.setLastError(e.getMessage());
+            keywordRepo.save(kw);
+        } finally {
+            closeLog(runLog, c);
         }
-        return true;
+        return c;
     }
 
-    private String uniqueSlug(String title) {
-        String base = SlugGenerator.from(title).toLowerCase(Locale.ROOT);
-        String slug = base;
-        int counter = 1;
-        while (jobRepository.existsBySlug(slug)) {
-            slug = base + "-" + counter++;
-            if (counter > 50) {
-                slug = base + "-" + System.currentTimeMillis();
-                break;
+    // ─── Generic source run (Adzuna/RemoteOK/Himalayas) ──────
+    @Transactional
+    public Counters runGeneric(JobIngestSource source) {
+        IngestRunLog runLog = openLog(source.name(), null);
+        Counters c = new Counters();
+        try {
+            List<IngestedJob> batch = source.fetch();
+            c.fetched = batch.size();
+            for (IngestedJob raw : batch) {
+                Outcome outcome = pipeline.process(raw);
+                tally(c, outcome);
+            }
+        } catch (Exception e) {
+            log.warn("Source '{}' failed: {}", source.name(), e.getMessage());
+            runLog.setError(e.getMessage());
+        } finally {
+            closeLog(runLog, c);
+        }
+        return c;
+    }
+
+    // ─── Log helpers ─────────────────────────────────────────
+    private IngestRunLog openLog(String source, String keyword) {
+        IngestRunLog log = new IngestRunLog();
+        log.setSource(source);
+        log.setKeyword(keyword);
+        return runLogRepo.save(log);
+    }
+
+    private void closeLog(IngestRunLog log, Counters c) {
+        log.setFinishedAt(OffsetDateTime.now());
+        log.setFetched(c.fetched);
+        log.setRejectedHard(c.rejectedHard);
+        log.setRejectedScore(c.rejectedScore);
+        log.setDuplicatesL1(c.duplicatesL1);
+        log.setDuplicatesL2(c.duplicatesL2);
+        log.setDuplicatesL3(c.duplicatesL3);
+        log.setInserted(c.inserted);
+        runLogRepo.save(log);
+    }
+
+    private static void tally(Counters c, Outcome outcome) {
+        if (outcome instanceof Outcome.Inserted) {
+            c.inserted++;
+        } else if (outcome instanceof Outcome.Updated u) {
+            switch (u.level()) {
+                case L1_EXTERNAL_ID -> c.duplicatesL1++;
+                case L2_HASH        -> c.duplicatesL2++;
+                case L3_FUZZY       -> c.duplicatesL3++;
+                default             -> {}
+            }
+        } else if (outcome instanceof Outcome.Rejected r) {
+            switch (r.stage()) {
+                case HARD  -> c.rejectedHard++;
+                case SCORE -> c.rejectedScore++;
+                default    -> c.rejectedHard++;
             }
         }
-        return slug;
+    }
+
+    public static class Counters {
+        public int fetched, rejectedHard, rejectedScore;
+        public int duplicatesL1, duplicatesL2, duplicatesL3, inserted;
     }
 }

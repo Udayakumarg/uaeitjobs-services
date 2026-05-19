@@ -64,8 +64,10 @@ public class JobMaintenanceScheduler {
      */
     @Scheduled(cron = "${app.cron.ingest-jobs:0 0 */6 * * *}", zone = "UTC")
     public void ingestExternalJobs() {
-        Map<String, Integer> report = jobIngestService.runAll();
-        int total = report.values().stream().mapToInt(Integer::intValue).sum();
+        Map<String, Object> report = jobIngestService.runAll();
+        int total = report.values().stream()
+                .mapToInt(v -> v instanceof Integer i ? i : 0)
+                .sum();
         if (total > 0) {
             log.info("Cron: ingested {} new job(s) across sources: {}", total, report);
         } else {

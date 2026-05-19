@@ -55,6 +55,72 @@ public class Job {
     /** External URL the user is sent to when clicking Apply (LinkedIn / company site). */
     @Column(name = "apply_url", columnDefinition = "text")
     private String applyUrl;
+
+    // ── Intelligence layer (V7) ─────────────────────────────────
+    /** Stable identifier from the source API — primary dedup key. */
+    @Column(name = "external_job_id")
+    private String externalJobId;
+    /** Same value as `source` but kept explicit for the unique-index pair. */
+    @Column(name = "external_source")
+    private String externalSource;
+    /** SHA-256 of normalized(company + title + city) — L2 dedup key. */
+    @Column(name = "dedup_hash")
+    private String dedupHash;
+    @Column(name = "last_seen_at", nullable = false)
+    private OffsetDateTime lastSeenAt;
+    @Column(name = "duplicate_source_count", nullable = false)
+    private int duplicateSourceCount = 1;
+    /** Original publisher reported by JSearch (LinkedIn, Bayt, …). */
+    @Column(name = "publisher")
+    private String publisher;
+    @Column(name = "raw_title")
+    private String rawTitle;
+    @Column(name = "normalized_title")
+    private String normalizedTitle;
+    @Column(name = "normalized_company_name")
+    private String normalizedCompanyName;
+    @Column(name = "city")
+    private String city;
+    @Column(name = "country")
+    private String country = "AE";
+    /** remote | hybrid | onsite */
+    @Column(name = "work_mode")
+    private String workMode;
+    /** intern | junior | mid | senior | lead | manager | architect */
+    @Column(name = "seniority")
+    private String seniority;
+    @Column(name = "relevance_score", nullable = false)
+    private int relevanceScore = 100;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "relevance_reasons", columnDefinition = "jsonb")
+    private String relevanceReasons;
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "technologies", columnDefinition = "jsonb", nullable = false)
+    private String technologies = "[]";
+    @Column(name = "visa_sponsorship")
+    private Boolean visaSponsorship;
+    @Column(name = "easy_apply")
+    private Boolean easyApply;
+    @Column(name = "relocation_support")
+    private Boolean relocationSupport;
+
+    // ── Fast tech filters ─────────────────────────────────────
+    @Column(name = "has_java",        nullable = false) private boolean hasJava;
+    @Column(name = "has_python",      nullable = false) private boolean hasPython;
+    @Column(name = "has_javascript",  nullable = false) private boolean hasJavascript;
+    @Column(name = "has_typescript",  nullable = false) private boolean hasTypescript;
+    @Column(name = "has_csharp",      nullable = false) private boolean hasCsharp;
+    @Column(name = "has_react",       nullable = false) private boolean hasReact;
+    @Column(name = "has_angular",     nullable = false) private boolean hasAngular;
+    @Column(name = "has_node",        nullable = false) private boolean hasNode;
+    @Column(name = "has_spring_boot", nullable = false) private boolean hasSpringBoot;
+    @Column(name = "has_selenium",    nullable = false) private boolean hasSelenium;
+    @Column(name = "has_playwright",  nullable = false) private boolean hasPlaywright;
+    @Column(name = "has_aws",         nullable = false) private boolean hasAws;
+    @Column(name = "has_azure",       nullable = false) private boolean hasAzure;
+    @Column(name = "has_kubernetes",  nullable = false) private boolean hasKubernetes;
+    @Column(name = "has_docker",      nullable = false) private boolean hasDocker;
+    @Column(name = "has_postgresql",  nullable = false) private boolean hasPostgresql;
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb", nullable = false)
     private String skills = "[]";

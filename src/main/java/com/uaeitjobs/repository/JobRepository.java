@@ -19,6 +19,26 @@ public interface JobRepository extends JpaRepository<Job, Long> {
     boolean existsBySlug(String slug);
     boolean existsByApplyUrl(String applyUrl);
 
+    Optional<Job> findByExternalSourceAndExternalJobId(String externalSource, String externalJobId);
+    Optional<Job> findFirstByDedupHash(String dedupHash);
+
+    /**
+     * L3 fuzzy dedup using pg_trgm. Same company + same city + title
+     * similarity >= 0.85. Returns the first hit only.
+     */
+    @Query(value = """
+        select * from jobs j
+        where j.is_active = true
+          and lower(coalesce(j.normalized_company_name,'')) = lower(coalesce(:company,''))
+          and lower(coalesce(j.city,''))                     = lower(coalesce(:city,''))
+          and similarity(lower(coalesce(j.normalized_title,'')),
+                         lower(coalesce(:title,''))) >= 0.85
+        limit 1
+        """, nativeQuery = true)
+    Optional<Job> findFuzzyMatch(@Param("title") String title,
+                                 @Param("company") String company,
+                                 @Param("city") String city);
+
     @Modifying
     @Query("update Job j set j.viewCount = j.viewCount + 1 where j.id = :id")
     void incrementViewCount(@Param("id") Long id);

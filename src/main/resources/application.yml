@@ -39,6 +39,13 @@ app:
       enabled: ${REMOTEOK_ENABLED:false}
     himalayas:
       enabled: ${HIMALAYAS_ENABLED:false}
+    # JSearch via RapidAPI — UAE-specific Google for Jobs wrapper.
+    # Set JSEARCH_RAPIDAPI_KEY in /opt/qten/.env to enable.
+    jsearch:
+      enabled: ${JSEARCH_ENABLED:true}
+      rapidapi-key: ${JSEARCH_RAPIDAPI_KEY:}
+      country: ${JSEARCH_COUNTRY:ae}
+      pages: ${JSEARCH_PAGES:1}
   cron:
     ingest-jobs: ${CRON_INGEST_JOBS:0 0 */6 * * *}
     expire-stale-jobs: ${CRON_EXPIRE_STALE:0 0 2 * * *}

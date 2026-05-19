@@ -108,6 +108,7 @@ public class RemoteOkSource implements JobIngestSource {
         return new IngestedJob(
                 externalId,
                 name(),
+                "RemoteOK",
                 title,
                 company,
                 description,

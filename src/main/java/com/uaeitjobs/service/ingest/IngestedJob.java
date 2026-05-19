@@ -2,12 +2,13 @@ package com.uaeitjobs.service.ingest;
 
 /**
  * Source-agnostic representation of a job pulled from an external feed.
- * Each ingest source maps its API response into this DTO; the orchestrator
- * is the only thing that touches the Job entity, so sources stay simple.
+ * Each ingest source maps its API response into this DTO; the pipeline is
+ * the only thing that touches the Job entity.
  */
 public record IngestedJob(
-        String externalId,
-        String source,         // "adzuna" | "remoteok" | "wwr" ...
+        String externalJobId,  // source-stable ID (jsearch job_id, adzuna id, …)
+        String source,         // "jsearch" | "adzuna" | "remoteok" | …
+        String publisher,      // who originally posted (LinkedIn, Bayt, …)
         String title,
         String companyName,
         String description,
