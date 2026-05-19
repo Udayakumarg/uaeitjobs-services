@@ -22,7 +22,7 @@ import java.util.List;
  * see them at the root.
  */
 @RestController
-@RequestMapping("/seo")
+@RequestMapping("/api/v1/seo")
 @RequiredArgsConstructor
 public class SeoController {
 
