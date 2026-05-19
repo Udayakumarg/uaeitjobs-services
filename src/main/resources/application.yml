@@ -34,6 +34,8 @@ app:
       pages: ${ADZUNA_PAGES:3}
     remoteok:
       enabled: ${REMOTEOK_ENABLED:true}
+    himalayas:
+      enabled: ${HIMALAYAS_ENABLED:true}
   cron:
     ingest-jobs: ${CRON_INGEST_JOBS:0 0 */6 * * *}
     expire-stale-jobs: ${CRON_EXPIRE_STALE:0 0 2 * * *}

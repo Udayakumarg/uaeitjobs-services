@@ -14,12 +14,19 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Pulls UAE IT jobs from the Adzuna Jobs API.
+ * Pulls UAE-related IT jobs from the Adzuna Jobs API.
+ *
+ * Adzuna does NOT support the "ae" country code directly. Workaround:
+ * point at the UK ("gb") index and filter via `what_phrase` for UAE
+ * keywords. This catches multinational employers (HSBC, EY, Deloitte,
+ * BCG, Accenture, Standard Chartered, etc.) that post UAE roles on the
+ * UK Adzuna feed.
+ *
  * https://developer.adzuna.com/docs/search
  *
  * Free tier: 1000 calls/day per registered app. We pull 50 jobs per page
- * across the first three pages = 150 jobs per run, which keeps us well
- * inside the quota even with hourly runs.
+ * across the first three pages per phrase = ~300 calls per pass which
+ * keeps us well inside the quota with a 6-hour cron.
  *
  * Configuration (application.yml / env vars):
  *   app.ingest.adzuna.enabled=true|false
@@ -31,9 +38,16 @@ import java.util.Locale;
 @Component
 public class AdzunaSource implements JobIngestSource {
 
-    private static final String COUNTRY = "ae";
+    /** Adzuna does not have an AE index, so we use GB and filter by phrase. */
+    private static final String COUNTRY = "gb";
     private static final String CATEGORY_IT = "it-jobs";
     private static final int RESULTS_PER_PAGE = 50;
+    /** Phrases that catch UAE-related postings on the UK index. */
+    private static final List<String> SEARCH_PHRASES = List.of(
+            "United Arab Emirates",
+            "Dubai",
+            "Abu Dhabi"
+    );
 
     private final RestTemplate http;
 
@@ -72,26 +86,37 @@ public class AdzunaSource implements JobIngestSource {
             log.debug("Adzuna source disabled or credentials missing — skipping.");
             return List.of();
         }
-        List<IngestedJob> all = new ArrayList<>();
-        for (int page = 1; page <= Math.max(1, pages); page++) {
-            try {
-                all.addAll(fetchPage(page));
-            } catch (Exception ex) {
-                log.warn("Adzuna page {} failed: {}", page, ex.getMessage());
-                break; // bail on first failure rather than hammer their API
+        // De-dupe within this pass: phrases can overlap (Dubai + UAE often
+        // match the same listing) so we keep a Set of seen apply URLs.
+        java.util.LinkedHashMap<String, IngestedJob> deduped = new java.util.LinkedHashMap<>();
+        for (String phrase : SEARCH_PHRASES) {
+            for (int page = 1; page <= Math.max(1, pages); page++) {
+                try {
+                    List<IngestedJob> batch = fetchPage(phrase, page);
+                    if (batch.isEmpty()) break; // no more pages for this phrase
+                    for (IngestedJob job : batch) {
+                        if (job.applyUrl() == null) continue;
+                        deduped.putIfAbsent(job.applyUrl(), job);
+                    }
+                } catch (Exception ex) {
+                    log.warn("Adzuna phrase='{}' page={} failed: {}", phrase, page, ex.getMessage());
+                    break;
+                }
             }
         }
-        log.info("Adzuna source: fetched {} job(s) across {} page(s).", all.size(), Math.max(1, pages));
-        return all;
+        log.info("Adzuna source: fetched {} unique job(s) across {} phrase(s).",
+                deduped.size(), SEARCH_PHRASES.size());
+        return new ArrayList<>(deduped.values());
     }
 
-    private List<IngestedJob> fetchPage(int page) {
+    private List<IngestedJob> fetchPage(String phrase, int page) {
         String url = UriComponentsBuilder
                 .fromUriString("https://api.adzuna.com/v1/api/jobs/" + COUNTRY + "/search/" + page)
                 .queryParam("app_id", appId)
                 .queryParam("app_key", appKey)
                 .queryParam("category", CATEGORY_IT)
                 .queryParam("results_per_page", RESULTS_PER_PAGE)
+                .queryParam("what_phrase", phrase)
                 .queryParam("content-type", "application/json")
                 .toUriString();
         JsonNode body = http.getForObject(url, JsonNode.class);
@@ -100,9 +125,24 @@ public class AdzunaSource implements JobIngestSource {
         List<IngestedJob> mapped = new ArrayList<>(results.size());
         for (JsonNode node : results) {
             IngestedJob job = mapOne(node);
-            if (job != null) mapped.add(job);
+            if (job != null && mentionsUae(job)) mapped.add(job);
         }
         return mapped;
+    }
+
+    /** Defensive filter — Adzuna's UK index sometimes returns UK-only roles
+     *  whose only UAE link is a stray description mention. We require the
+     *  location string or title to actually reference UAE. */
+    private static boolean mentionsUae(IngestedJob job) {
+        String haystack = ((job.locationUae() == null ? "" : job.locationUae()) + " "
+                + (job.title() == null ? "" : job.title()) + " "
+                + (job.description() == null ? "" : job.description()))
+                .toLowerCase(Locale.ROOT);
+        return haystack.contains("united arab emirates")
+                || haystack.contains("uae")
+                || haystack.contains("dubai")
+                || haystack.contains("abu dhabi")
+                || haystack.contains("sharjah");
     }
 
     private IngestedJob mapOne(JsonNode node) {
