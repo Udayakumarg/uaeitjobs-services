@@ -81,7 +81,7 @@ public class Job {
     private String normalizedCompanyName;
     @Column(name = "city")
     private String city;
-    @Column(name = "country", columnDefinition = "char(2)", length = 2)
+    @Column(name = "country", length = 2)
     private String country = "AE";
     /** remote | hybrid | onsite */
     @Column(name = "work_mode")
