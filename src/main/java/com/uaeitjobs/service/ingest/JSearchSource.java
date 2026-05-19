@@ -82,6 +82,7 @@ public class JSearchSource {
                 .queryParam("page", page)
                 .queryParam("num_pages", 1)
                 .queryParam("country", country)
+                .queryParam("language", "en")       // force English content
                 .queryParam("date_posted", "month")
                 .build(false)
                 .toUriString();
@@ -94,10 +95,23 @@ public class JSearchSource {
         ResponseEntity<JsonNode> response = http.exchange(
                 url, HttpMethod.GET, new HttpEntity<>(headers), JsonNode.class);
         JsonNode body = response.getBody();
-        if (body == null || !body.has("data") || !body.get("data").isArray()) return List.of();
+        if (body == null) return List.of();
+
+        // /search-v2 returns { status, data: { jobs: [...] } }
+        // /search   returned { status, data: [...] } — keep both paths.
+        JsonNode dataNode = body.get("data");
+        JsonNode jobsArr;
+        if (dataNode == null) return List.of();
+        if (dataNode.isArray()) {
+            jobsArr = dataNode;                                  // legacy /search
+        } else if (dataNode.has("jobs") && dataNode.get("jobs").isArray()) {
+            jobsArr = dataNode.get("jobs");                      // /search-v2
+        } else {
+            return List.of();
+        }
 
         List<IngestedJob> mapped = new ArrayList<>();
-        for (JsonNode node : body.get("data")) {
+        for (JsonNode node : jobsArr) {
             IngestedJob job = mapOne(node);
             if (job != null) mapped.add(job);
         }
@@ -107,8 +121,11 @@ public class JSearchSource {
     private IngestedJob mapOne(JsonNode node) {
         String id = optText(node, "job_id");
         String title = optText(node, "job_title");
+        // /search-v2 prefers job_apply_link; fall back to first apply_options entry.
         String url = firstNonBlank(
                 optText(node, "job_apply_link"),
+                node.path("apply_options").isArray() && node.path("apply_options").size() > 0
+                        ? optText(node.path("apply_options").get(0), "apply_link") : null,
                 optText(node, "job_google_link"));
         if (id == null || title == null || url == null) return null;
 
@@ -116,10 +133,16 @@ public class JSearchSource {
         String description = optText(node, "job_description");
         String publisher = firstNonBlank(
                 optText(node, "job_publisher"),
-                optText(node, "employer_company_type"));
+                node.path("apply_options").isArray() && node.path("apply_options").size() > 0
+                        ? optText(node.path("apply_options").get(0), "publisher") : null);
 
-        String city = firstNonBlank(optText(node, "job_city"), optText(node, "job_state"));
-        String countryCode = optText(node, "job_country");
+        // v2 returns null job_city/job_state — extract from job_location free-text instead.
+        String city = firstNonBlank(
+                optText(node, "job_city"),
+                optText(node, "job_state"),
+                extractCityFromLocation(optText(node, "job_location")));
+        // v2 also nulls job_country — but we queried country=ae, so it's AE.
+        String countryCode = firstNonBlank(optText(node, "job_country"), "AE");
         boolean remote = node.path("job_is_remote").asBoolean(false);
 
         Integer salaryMin = node.has("job_min_salary") && !node.get("job_min_salary").isNull()
@@ -129,7 +152,14 @@ public class JSearchSource {
         String currency = optText(node, "job_salary_currency");
         if (currency == null) currency = "AED";
 
-        String jobType = mapEmploymentType(optText(node, "job_employment_type"));
+        // v2 returns job_employment_types[] in English; job_employment_type is localized.
+        String empType = null;
+        JsonNode typesArr = node.path("job_employment_types");
+        if (typesArr.isArray() && typesArr.size() > 0) {
+            empType = typesArr.get(0).asText();
+        }
+        if (empType == null) empType = optText(node, "job_employment_type");
+        String jobType = mapEmploymentType(empType);
 
         String location = (city == null ? "" : city)
                 + (countryCode == null ? "" : ", " + countryCode);
@@ -153,6 +183,19 @@ public class JSearchSource {
                 url,
                 remote
         );
+    }
+
+    /**
+     * v2's job_location is a free-text string like "Dubai • via Indeed" or
+     * "Abu Dhabi, UAE". Extract the leading place name (everything before
+     * the first separator).
+     */
+    private static String extractCityFromLocation(String loc) {
+        if (loc == null || loc.isBlank()) return null;
+        // Split on common separators: •, |, "via", "-"
+        String first = loc.split("[•|\\-]| via ", 2)[0].trim();
+        // Strip a trailing country suffix (", UAE" / ", United Arab Emirates")
+        return first.replaceAll("(?i),\\s*(uae|united arab emirates)\\s*$", "").trim();
     }
 
     private static String mapEmploymentType(String et) {
