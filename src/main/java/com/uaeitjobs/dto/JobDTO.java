@@ -27,7 +27,9 @@ public final class JobDTO {
             String visaType,
             String emirate,
             Boolean immediateJoiner,
-            Boolean remoteUae
+            Boolean remoteUae,
+            String jobCategory,
+            String applyUrl
     ) {
     }
 
@@ -56,7 +58,9 @@ public final class JobDTO {
             String visaType,
             String emirate,
             boolean immediateJoiner,
-            boolean remoteUae
+            boolean remoteUae,
+            String jobCategory,
+            String applyUrl
     ) {
     }
 }

@@ -92,7 +92,9 @@ public class HRService {
                     null,     // visaType — unknown from LinkedIn scrape
                     null,     // emirate
                     false,    // immediateJoiner
-                    false     // remoteUae
+                    false,    // remoteUae
+                    null,     // jobCategory — auto-inferred from title
+                    scraped.getLinkedInUrl() // applyUrl — send applicants back to LinkedIn
             );
             JobDTO.JobResponse response = jobService.create(request, user, "linkedin");
             importRecord.setStatus("processed");

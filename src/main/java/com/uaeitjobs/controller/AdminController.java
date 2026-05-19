@@ -55,4 +55,15 @@ public class AdminController {
                 "totalTemplates", demoJobSeedService.totalTemplates()
         );
     }
+
+    /** Deletes existing demo jobs and re-seeds from the curated catalog. */
+    @PostMapping("/seed/demo-jobs/reset")
+    public Map<String, Object> resetDemoJobs() {
+        int purged = demoJobSeedService.purgeDemoJobs();
+        int created = demoJobSeedService.seed(currentUserService.get());
+        return Map.of(
+                "purged", purged,
+                "created", created
+        );
+    }
 }

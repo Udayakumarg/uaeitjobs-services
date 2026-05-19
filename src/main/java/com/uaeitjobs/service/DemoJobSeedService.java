@@ -4,12 +4,15 @@ import com.uaeitjobs.entity.Job;
 import com.uaeitjobs.entity.User;
 import com.uaeitjobs.repository.JobRepository;
 import com.uaeitjobs.repository.UserRepository;
+import com.uaeitjobs.util.JobCategoryClassifier;
 import com.uaeitjobs.util.SlugGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -229,6 +232,12 @@ public class DemoJobSeedService {
             job.setEmirate(t.emirate());
             job.setImmediateJoiner(t.immediateJoiner());
             job.setRemoteUae(t.remoteUae());
+            String inferred = JobCategoryClassifier.classify(t.title(), t.skillsJson());
+            job.setJobCategory(inferred != null ? inferred : JobCategoryClassifier.OTHER);
+            // Demo postings link to a LinkedIn job-search prefilled with the
+            // role + company so candidates land on a real, relevant page.
+            String query = URLEncoder.encode(t.title() + " " + t.company() + " UAE", StandardCharsets.UTF_8);
+            job.setApplyUrl("https://www.linkedin.com/jobs/search/?keywords=" + query + "&location=United%20Arab%20Emirates");
             jobRepository.save(job);
             created++;
         }
@@ -238,6 +247,17 @@ public class DemoJobSeedService {
 
     public int totalTemplates() {
         return CATALOG.size();
+    }
+
+    /** Hard-deletes every job whose source is 'demo_seed'. Returns rows removed. */
+    @Transactional
+    public int purgeDemoJobs() {
+        List<Job> demos = jobRepository.findAll().stream()
+                .filter(j -> "demo_seed".equals(j.getSource()))
+                .toList();
+        jobRepository.deleteAll(demos);
+        log.info("Demo seed: purged {} demo job(s).", demos.size());
+        return demos.size();
     }
 
     private String uniqueSlug(String title) {

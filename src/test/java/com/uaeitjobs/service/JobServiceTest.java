@@ -31,7 +31,7 @@ class JobServiceTest {
         user.setId(1L);
         user.setVerified(false);
 
-        JobDTO.JobRequest request = new JobDTO.JobRequest("Java Developer", "Demo", "Build APIs", null, null, null, "AED", "full_time", "mid", "Dubai", "[]", null, false, null, null, null, false, false);
+        JobDTO.JobRequest request = new JobDTO.JobRequest("Java Developer", "Demo", "Build APIs", null, null, null, "AED", "full_time", "mid", "Dubai", "[]", null, false, null, null, null, false, false, null, null);
 
         assertThatThrownBy(() -> jobService.create(request, user))
                 .isInstanceOf(ValidationException.class)

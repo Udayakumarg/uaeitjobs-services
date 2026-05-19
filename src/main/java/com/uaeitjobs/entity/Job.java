@@ -49,6 +49,12 @@ public class Job {
     private boolean immediateJoiner;
     @Column(name = "remote_uae", nullable = false)
     private boolean remoteUae;
+    /** Coarse role category — backend, frontend, qa, devops, etc. See JobCategory util for accepted values. */
+    @Column(name = "job_category")
+    private String jobCategory;
+    /** External URL the user is sent to when clicking Apply (LinkedIn / company site). */
+    @Column(name = "apply_url", columnDefinition = "text")
+    private String applyUrl;
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb", nullable = false)
     private String skills = "[]";

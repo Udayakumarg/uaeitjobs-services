@@ -25,11 +25,13 @@ public class JobController {
                                          @RequestParam(required = false) String visaType,
                                          @RequestParam(required = false) String emirate,
                                          @RequestParam(required = false) Boolean immediateJoiner,
-                                         @RequestParam(required = false) Boolean remoteUae) {
+                                         @RequestParam(required = false) Boolean remoteUae,
+                                         @RequestParam(required = false) String category) {
         boolean anyFilter = type != null || level != null || location != null || skills != null
-                || visaType != null || emirate != null || immediateJoiner != null || remoteUae != null;
+                || visaType != null || emirate != null || immediateJoiner != null || remoteUae != null
+                || category != null;
         if (anyFilter) {
-            return jobService.filter(type, level, location, skills, visaType, emirate, immediateJoiner, remoteUae, PageUtil.page(page, size));
+            return jobService.filter(type, level, location, skills, visaType, emirate, immediateJoiner, remoteUae, category, PageUtil.page(page, size));
         }
         return jobService.list(PageUtil.page(page, size));
     }
@@ -51,8 +53,9 @@ public class JobController {
                                            @RequestParam(required = false) String emirate,
                                            @RequestParam(required = false) Boolean immediateJoiner,
                                            @RequestParam(required = false) Boolean remoteUae,
+                                           @RequestParam(required = false) String category,
                                            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return jobService.filter(type, level, location, skills, visaType, emirate, immediateJoiner, remoteUae, PageUtil.page(page, size));
+        return jobService.filter(type, level, location, skills, visaType, emirate, immediateJoiner, remoteUae, category, PageUtil.page(page, size));
     }
 
     @PostMapping("/jobs")

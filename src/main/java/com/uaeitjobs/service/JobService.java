@@ -9,6 +9,7 @@ import com.uaeitjobs.exception.ValidationException;
 import com.uaeitjobs.mapper.JobMapper;
 import com.uaeitjobs.repository.JobRepository;
 import com.uaeitjobs.repository.UserRepository;
+import com.uaeitjobs.util.JobCategoryClassifier;
 import com.uaeitjobs.util.SlugGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -41,12 +42,12 @@ public class JobService {
     }
 
     public Page<JobDTO.JobResponse> filter(String type, String level, String location, String skill, Pageable pageable) {
-        return filter(type, level, location, skill, null, null, null, null, pageable);
+        return filter(type, level, location, skill, null, null, null, null, null, pageable);
     }
 
     public Page<JobDTO.JobResponse> filter(String type, String level, String location, String skill,
                                            String visaType, String emirate, Boolean immediateJoiner, Boolean remoteUae,
-                                           Pageable pageable) {
+                                           String category, Pageable pageable) {
         return jobRepository.filter(
                 blankToNull(type),
                 blankToNull(level),
@@ -56,6 +57,7 @@ public class JobService {
                 blankToNull(emirate),
                 Boolean.TRUE.equals(immediateJoiner) ? Boolean.TRUE : null,
                 Boolean.TRUE.equals(remoteUae) ? Boolean.TRUE : null,
+                blankToNull(category),
                 pageable).map(jobMapper::toResponse);
     }
 
@@ -136,6 +138,14 @@ public class JobService {
         job.setEmirate(blankToNull(request.emirate()));
         job.setImmediateJoiner(Boolean.TRUE.equals(request.immediateJoiner()));
         job.setRemoteUae(Boolean.TRUE.equals(request.remoteUae()));
+        job.setApplyUrl(blankToNull(request.applyUrl()));
+        String requestedCategory = blankToNull(request.jobCategory());
+        if (JobCategoryClassifier.isValid(requestedCategory)) {
+            job.setJobCategory(requestedCategory);
+        } else {
+            String inferred = JobCategoryClassifier.classify(request.title(), request.skills());
+            job.setJobCategory(inferred != null ? inferred : JobCategoryClassifier.OTHER);
+        }
         return job;
     }
 

@@ -33,6 +33,7 @@ public interface JobRepository extends JpaRepository<Job, Long> {
           and (:emirate is null or j.emirate = :emirate)
           and (:immediateJoiner is null or j.immediate_joiner = :immediateJoiner)
           and (:remoteUae is null or j.remote_uae = :remoteUae)
+          and (:category is null or j.job_category = :category)
         """, nativeQuery = true)
     Page<Job> filter(@Param("type") String type,
                      @Param("level") String level,
@@ -42,6 +43,7 @@ public interface JobRepository extends JpaRepository<Job, Long> {
                      @Param("emirate") String emirate,
                      @Param("immediateJoiner") Boolean immediateJoiner,
                      @Param("remoteUae") Boolean remoteUae,
+                     @Param("category") String category,
                      Pageable pageable);
 
     @Query(value = """
