@@ -41,7 +41,22 @@ public class JobService {
     }
 
     public Page<JobDTO.JobResponse> filter(String type, String level, String location, String skill, Pageable pageable) {
-        return jobRepository.filter(blankToNull(type), blankToNull(level), blankToNull(location), blankToNull(skill), pageable).map(jobMapper::toResponse);
+        return filter(type, level, location, skill, null, null, null, null, pageable);
+    }
+
+    public Page<JobDTO.JobResponse> filter(String type, String level, String location, String skill,
+                                           String visaType, String emirate, Boolean immediateJoiner, Boolean remoteUae,
+                                           Pageable pageable) {
+        return jobRepository.filter(
+                blankToNull(type),
+                blankToNull(level),
+                blankToNull(location),
+                blankToNull(skill),
+                blankToNull(visaType),
+                blankToNull(emirate),
+                Boolean.TRUE.equals(immediateJoiner) ? Boolean.TRUE : null,
+                Boolean.TRUE.equals(remoteUae) ? Boolean.TRUE : null,
+                pageable).map(jobMapper::toResponse);
     }
 
     public Page<JobDTO.JobResponse> search(String query, Pageable pageable) {
@@ -117,6 +132,10 @@ public class JobService {
         job.setLinkedinUrl(request.linkedinUrl());
         job.setFeatured(Boolean.TRUE.equals(request.featured()));
         job.setExpiresAt(request.expiresAt());
+        job.setVisaType(blankToNull(request.visaType()));
+        job.setEmirate(blankToNull(request.emirate()));
+        job.setImmediateJoiner(Boolean.TRUE.equals(request.immediateJoiner()));
+        job.setRemoteUae(Boolean.TRUE.equals(request.remoteUae()));
         return job;
     }
 

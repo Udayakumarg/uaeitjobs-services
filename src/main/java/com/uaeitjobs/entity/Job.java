@@ -40,6 +40,15 @@ public class Job {
     private String experienceLevel;
     @Column(name = "location_uae")
     private String locationUae;
+    /** UAE filter dimensions — see V5 migration for accepted values. */
+    @Column(name = "visa_type")
+    private String visaType;
+    @Column(name = "emirate")
+    private String emirate;
+    @Column(name = "immediate_joiner", nullable = false)
+    private boolean immediateJoiner;
+    @Column(name = "remote_uae", nullable = false)
+    private boolean remoteUae;
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb", nullable = false)
     private String skills = "[]";

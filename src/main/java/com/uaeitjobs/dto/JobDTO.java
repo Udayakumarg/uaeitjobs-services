@@ -23,7 +23,11 @@ public final class JobDTO {
             String skills,
             String linkedinUrl,
             Boolean featured,
-            OffsetDateTime expiresAt
+            OffsetDateTime expiresAt,
+            String visaType,
+            String emirate,
+            Boolean immediateJoiner,
+            Boolean remoteUae
     ) {
     }
 
@@ -48,7 +52,11 @@ public final class JobDTO {
             OffsetDateTime expiresAt,
             boolean featured,
             boolean active,
-            long viewCount
+            long viewCount,
+            String visaType,
+            String emirate,
+            boolean immediateJoiner,
+            boolean remoteUae
     ) {
     }
 }

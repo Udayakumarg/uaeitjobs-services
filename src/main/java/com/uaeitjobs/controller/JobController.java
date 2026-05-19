@@ -21,9 +21,15 @@ public class JobController {
     @GetMapping("/jobs")
     public Page<JobDTO.JobResponse> list(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size,
                                          @RequestParam(required = false) String type, @RequestParam(required = false) String level,
-                                         @RequestParam(required = false) String location, @RequestParam(required = false) String skills) {
-        if (type != null || level != null || location != null || skills != null) {
-            return jobService.filter(type, level, location, skills, PageUtil.page(page, size));
+                                         @RequestParam(required = false) String location, @RequestParam(required = false) String skills,
+                                         @RequestParam(required = false) String visaType,
+                                         @RequestParam(required = false) String emirate,
+                                         @RequestParam(required = false) Boolean immediateJoiner,
+                                         @RequestParam(required = false) Boolean remoteUae) {
+        boolean anyFilter = type != null || level != null || location != null || skills != null
+                || visaType != null || emirate != null || immediateJoiner != null || remoteUae != null;
+        if (anyFilter) {
+            return jobService.filter(type, level, location, skills, visaType, emirate, immediateJoiner, remoteUae, PageUtil.page(page, size));
         }
         return jobService.list(PageUtil.page(page, size));
     }
@@ -41,8 +47,12 @@ public class JobController {
     @GetMapping("/jobs/filter")
     public Page<JobDTO.JobResponse> filter(@RequestParam(required = false) String type, @RequestParam(required = false) String level,
                                            @RequestParam(required = false) String location, @RequestParam(required = false) String skills,
+                                           @RequestParam(required = false) String visaType,
+                                           @RequestParam(required = false) String emirate,
+                                           @RequestParam(required = false) Boolean immediateJoiner,
+                                           @RequestParam(required = false) Boolean remoteUae,
                                            @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return jobService.filter(type, level, location, skills, PageUtil.page(page, size));
+        return jobService.filter(type, level, location, skills, visaType, emirate, immediateJoiner, remoteUae, PageUtil.page(page, size));
     }
 
     @PostMapping("/jobs")

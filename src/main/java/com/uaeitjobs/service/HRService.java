@@ -88,7 +88,11 @@ public class HRService {
                     toJsonArray(scraped.getSkills()),
                     scraped.getLinkedInUrl(),
                     false,
-                    OffsetDateTime.now().plusDays(30)
+                    OffsetDateTime.now().plusDays(30),
+                    null,     // visaType — unknown from LinkedIn scrape
+                    null,     // emirate
+                    false,    // immediateJoiner
+                    false     // remoteUae
             );
             JobDTO.JobResponse response = jobService.create(request, user, "linkedin");
             importRecord.setStatus("processed");

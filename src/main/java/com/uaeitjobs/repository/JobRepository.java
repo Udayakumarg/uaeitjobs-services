@@ -29,8 +29,20 @@ public interface JobRepository extends JpaRepository<Job, Long> {
           and (:level is null or j.experience_level = :level)
           and (:location is null or lower(j.location_uae) like lower(concat('%', :location, '%')))
           and (:skill is null or j.skills::text ilike concat('%', :skill, '%'))
+          and (:visaType is null or j.visa_type = :visaType)
+          and (:emirate is null or j.emirate = :emirate)
+          and (:immediateJoiner is null or j.immediate_joiner = :immediateJoiner)
+          and (:remoteUae is null or j.remote_uae = :remoteUae)
         """, nativeQuery = true)
-    Page<Job> filter(@Param("type") String type, @Param("level") String level, @Param("location") String location, @Param("skill") String skill, Pageable pageable);
+    Page<Job> filter(@Param("type") String type,
+                     @Param("level") String level,
+                     @Param("location") String location,
+                     @Param("skill") String skill,
+                     @Param("visaType") String visaType,
+                     @Param("emirate") String emirate,
+                     @Param("immediateJoiner") Boolean immediateJoiner,
+                     @Param("remoteUae") Boolean remoteUae,
+                     Pageable pageable);
 
     @Query(value = """
         select * from jobs j
