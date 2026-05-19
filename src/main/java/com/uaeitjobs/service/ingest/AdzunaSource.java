@@ -130,19 +130,21 @@ public class AdzunaSource implements JobIngestSource {
         return mapped;
     }
 
-    /** Defensive filter — Adzuna's UK index sometimes returns UK-only roles
-     *  whose only UAE link is a stray description mention. We require the
-     *  location string or title to actually reference UAE. */
+    /** Defensive filter — Adzuna's UK index returns UK-only roles whose
+     *  only UAE link is a stray description mention. We require the
+     *  LOCATION field to actually reference UAE (titles and descriptions
+     *  are too noisy). */
     private static boolean mentionsUae(IngestedJob job) {
-        String haystack = ((job.locationUae() == null ? "" : job.locationUae()) + " "
-                + (job.title() == null ? "" : job.title()) + " "
-                + (job.description() == null ? "" : job.description()))
-                .toLowerCase(Locale.ROOT);
-        return haystack.contains("united arab emirates")
-                || haystack.contains("uae")
-                || haystack.contains("dubai")
-                || haystack.contains("abu dhabi")
-                || haystack.contains("sharjah");
+        String location = (job.locationUae() == null ? "" : job.locationUae()).toLowerCase(Locale.ROOT);
+        return location.contains("united arab emirates")
+                || location.contains("uae")
+                || location.contains("dubai")
+                || location.contains("abu dhabi")
+                || location.contains("sharjah")
+                || location.contains("ajman")
+                || location.contains("ras al khaimah")
+                || location.contains("fujairah")
+                || location.contains("umm al quwain");
     }
 
     private IngestedJob mapOne(JsonNode node) {

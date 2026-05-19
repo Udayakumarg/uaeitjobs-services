@@ -30,7 +30,7 @@ public class RemoteOkSource implements JobIngestSource {
 
     private final RestTemplate http;
 
-    @Value("${app.ingest.remoteok.enabled:true}")
+    @Value("${app.ingest.remoteok.enabled:false}")
     private boolean enabled;
 
     public RemoteOkSource(RestTemplateBuilder builder) {

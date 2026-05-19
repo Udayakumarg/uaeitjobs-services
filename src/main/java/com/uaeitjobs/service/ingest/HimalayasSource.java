@@ -30,7 +30,7 @@ public class HimalayasSource implements JobIngestSource {
 
     private final RestTemplate http;
 
-    @Value("${app.ingest.himalayas.enabled:true}")
+    @Value("${app.ingest.himalayas.enabled:false}")
     private boolean enabled;
 
     public HimalayasSource(RestTemplateBuilder builder) {
