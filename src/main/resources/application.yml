@@ -41,11 +41,21 @@ app:
       enabled: ${HIMALAYAS_ENABLED:false}
     # JSearch via RapidAPI — UAE-specific Google for Jobs wrapper.
     # Set JSEARCH_RAPIDAPI_KEY in /opt/qten/.env to enable.
+    #
+    # Free Basic tier = 200 calls/month. Default tier-keywords picks
+    # (2+1+0+0) × 4 cron passes/day = 12 calls/day = 360/month — still
+    # over the free quota, so on free tier set JSEARCH_TIER1=1 + 1
+    # pass/day, OR upgrade to JSearch Pro ($10/mo, 2500 calls).
     jsearch:
       enabled: ${JSEARCH_ENABLED:true}
       rapidapi-key: ${JSEARCH_RAPIDAPI_KEY:}
       country: ${JSEARCH_COUNTRY:ae}
       pages: ${JSEARCH_PAGES:1}
+      delay-ms: ${JSEARCH_DELAY_MS:1700}
+      tier1-keywords: ${JSEARCH_TIER1:2}
+      tier2-keywords: ${JSEARCH_TIER2:1}
+      tier3-keywords: ${JSEARCH_TIER3:0}
+      tier4-keywords: ${JSEARCH_TIER4:0}
   cron:
     ingest-jobs: ${CRON_INGEST_JOBS:0 0 */6 * * *}
     expire-stale-jobs: ${CRON_EXPIRE_STALE:0 0 2 * * *}

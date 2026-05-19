@@ -9,6 +9,7 @@ import com.uaeitjobs.service.ingest.pipeline.JobIngestPipeline;
 import com.uaeitjobs.service.ingest.pipeline.JobIngestPipeline.Outcome;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,15 +36,29 @@ public class JobIngestService {
     private final KeywordSearchStrategyRepository keywordRepo;
     private final IngestRunLogRepository runLogRepo;
 
+    // Free tier rate limits: ~1 req/sec. These knobs let us stay safe on
+    // 200 calls/month even with a 6-hour cron, and easily widen on Pro.
+    @Value("${app.ingest.jsearch.delay-ms:1700}")   private long jsearchDelayMs;
+    @Value("${app.ingest.jsearch.tier1-keywords:2}") private int jsearchTier1;
+    @Value("${app.ingest.jsearch.tier2-keywords:1}") private int jsearchTier2;
+    @Value("${app.ingest.jsearch.tier3-keywords:0}") private int jsearchTier3;
+    @Value("${app.ingest.jsearch.tier4-keywords:0}") private int jsearchTier4;
+
     /** Per-cron run: keyword-driven JSearch first, then the legacy sources. */
     public Map<String, Object> runAll() {
         LinkedHashMap<String, Object> report = new LinkedHashMap<>();
 
-        // ── JSearch (keyword rotation) ────────────────────────
+        // ── JSearch (keyword rotation, rate-limited) ──────────
         if (jsearch.isEnabled()) {
             List<KeywordSearchStrategy> picks = pickKeywordRotation();
             int totalCreated = 0;
+            boolean first = true;
             for (KeywordSearchStrategy kw : picks) {
+                if (!first && jsearchDelayMs > 0) {
+                    try { Thread.sleep(jsearchDelayMs); }
+                    catch (InterruptedException ie) { Thread.currentThread().interrupt(); break; }
+                }
+                first = false;
                 Counters c = runJSearchForKeyword(kw);
                 totalCreated += c.inserted;
             }
@@ -66,13 +81,11 @@ public class JobIngestService {
 
     // ─── JSearch keyword-driven run ──────────────────────────
     private List<KeywordSearchStrategy> pickKeywordRotation() {
-        // 4 from T1, 2 from T2, 1 from T3, 1 from T4 — total 8
-        var t1 = keywordRepo.pickByTier(1, 4);
-        var t2 = keywordRepo.pickByTier(2, 2);
-        var t3 = keywordRepo.pickByTier(3, 1);
-        var t4 = keywordRepo.pickByTier(4, 1);
-        var combined = new java.util.ArrayList<KeywordSearchStrategy>(8);
-        combined.addAll(t1); combined.addAll(t2); combined.addAll(t3); combined.addAll(t4);
+        var combined = new java.util.ArrayList<KeywordSearchStrategy>();
+        if (jsearchTier1 > 0) combined.addAll(keywordRepo.pickByTier(1, jsearchTier1));
+        if (jsearchTier2 > 0) combined.addAll(keywordRepo.pickByTier(2, jsearchTier2));
+        if (jsearchTier3 > 0) combined.addAll(keywordRepo.pickByTier(3, jsearchTier3));
+        if (jsearchTier4 > 0) combined.addAll(keywordRepo.pickByTier(4, jsearchTier4));
         return combined;
     }
 
