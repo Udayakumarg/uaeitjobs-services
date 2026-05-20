@@ -9,6 +9,7 @@ import com.uaeitjobs.exception.ValidationException;
 import com.uaeitjobs.mapper.JobMapper;
 import com.uaeitjobs.repository.JobRepository;
 import com.uaeitjobs.repository.UserRepository;
+import com.uaeitjobs.service.ingest.pipeline.CompanyLogoResolver;
 import com.uaeitjobs.util.JobCategoryClassifier;
 import com.uaeitjobs.util.SlugGenerator;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class JobService {
     private final JobRepository jobRepository;
     private final UserRepository userRepository;
     private final JobMapper jobMapper;
+    private final CompanyLogoResolver logoResolver;
     private final SubscriptionService subscriptionService;
 
     public Page<JobDTO.JobResponse> list(Pageable pageable) {
@@ -146,6 +148,8 @@ public class JobService {
         job.setImmediateJoiner(Boolean.TRUE.equals(request.immediateJoiner()));
         job.setRemoteUae(Boolean.TRUE.equals(request.remoteUae()));
         job.setApplyUrl(blankToNull(request.applyUrl()));
+        job.setCompanyDomain(logoResolver.domain(request.applyUrl(), request.linkedinUrl()));
+        job.setCompanyLogoUrl(logoResolver.resolve(request.applyUrl(), request.linkedinUrl()));
         String requestedCategory = blankToNull(request.jobCategory());
         if (JobCategoryClassifier.isValid(requestedCategory)) {
             job.setJobCategory(requestedCategory);

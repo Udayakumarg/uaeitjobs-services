@@ -62,7 +62,8 @@ public final class JobDTO {
             String jobCategory,
             String applyUrl,
             String descriptionSections,
-            String descriptionHtml
+            String descriptionHtml,
+            String companyLogoUrl
     ) {
     }
 }

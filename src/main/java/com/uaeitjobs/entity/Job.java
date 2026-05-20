@@ -134,6 +134,13 @@ public class Job {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb", nullable = false)
     private String skills = "[]";
+    /** Root domain extracted from apply_url — used to build Clearbit logo URLs. */
+    @Column(name = "company_domain", length = 255)
+    private String companyDomain;
+    /** Resolved logo URL (Clearbit CDN). NULL when domain could not be determined. */
+    @Column(name = "company_logo_url", length = 500)
+    private String companyLogoUrl;
+
     @Column(name = "linkedin_url")
     private String linkedinUrl;
     private String source = "manual";

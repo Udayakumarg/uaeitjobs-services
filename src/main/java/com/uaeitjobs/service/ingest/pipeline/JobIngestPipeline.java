@@ -41,6 +41,7 @@ public class JobIngestPipeline {
     private final JobDescriptionFormatter descriptionFormatter;
     private final DescriptionFormatterRegistry formatterRegistry;
     private final JobRepository jobRepository;
+    private final CompanyLogoResolver logoResolver;
 
     public sealed interface Outcome {
         record Inserted(Job job)                          implements Outcome {}
@@ -165,6 +166,9 @@ public class JobIngestPipeline {
         // Override remote_uae only if the workMode classifier disagrees.
         job.setRemoteUae("remote".equals(job.getWorkMode()) || incoming.remoteUae());
         job.setImmediateJoiner(false);
+        // Company logo — resolved from apply URL with Clearbit fallback; 404s handled by the frontend.
+        job.setCompanyDomain(logoResolver.domain(incoming.applyUrl(), null));
+        job.setCompanyLogoUrl(logoResolver.resolve(incoming.applyUrl(), null));
         // Job category — re-use the existing classifier on the normalized title for stability.
         String category = JobCategoryClassifier.classify(job.getNormalizedTitle(), incoming.description());
         job.setJobCategory(category == null ? JobCategoryClassifier.OTHER : category);
