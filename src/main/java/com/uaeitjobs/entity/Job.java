@@ -25,8 +25,9 @@ public class Job {
     private String title;
     @Column(name = "company_name", nullable = false)
     private String companyName;
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "text")
     private String description;
+    @Column(columnDefinition = "text")
     private String requirements;
     @Column(name = "salary_min")
     private Integer salaryMin;

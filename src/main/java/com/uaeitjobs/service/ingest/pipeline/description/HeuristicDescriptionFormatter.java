@@ -141,7 +141,10 @@ public class HeuristicDescriptionFormatter implements JobDescriptionFormatter {
 
     @Override
     public String vendor() {
-        return "default";
+        // The LLM-backed formatter now owns the "default" key. The
+        // heuristic remains the in-process backup used by LlmDescriptionFormatter
+        // on any failure, and can still be addressed explicitly by name.
+        return "heuristic";
     }
 
     @Override
@@ -187,7 +190,9 @@ public class HeuristicDescriptionFormatter implements JobDescriptionFormatter {
         String s = chunk.trim();
         // Quick guards — list-shaped chunks can never be headers, even if
         // each item happens to be Title-Cased (e.g. "Java; Spring; Kafka").
-        if (countChar(s, ';') >= 3) return 0;
+        // We use 2 here (not 3 like the list-render rule) because two
+        // semicolons already means three items — clearly content.
+        if (countChar(s, ';') >= 2) return 0;
         if (HAS_BULLET.matcher(s).find()) return 0;
         int score = 0;
 

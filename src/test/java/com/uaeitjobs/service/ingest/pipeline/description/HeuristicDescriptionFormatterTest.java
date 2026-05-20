@@ -203,8 +203,8 @@ class HeuristicDescriptionFormatterTest {
     }
 
     @Test
-    @DisplayName("vendor() returns 'default' so the registry picks it as fallback")
-    void vendorIsDefault() {
-        assertThat(formatter.vendor()).isEqualTo("default");
+    @DisplayName("vendor() returns 'heuristic' — the LLM formatter now owns 'default'")
+    void vendorIsHeuristic() {
+        assertThat(formatter.vendor()).isEqualTo("heuristic");
     }
 }

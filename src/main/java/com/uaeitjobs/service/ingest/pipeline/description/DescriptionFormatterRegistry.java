@@ -44,11 +44,19 @@ public class DescriptionFormatterRegistry {
     }
 
     /**
-     * Resolve a formatter for the supplied source. Falls back to the
-     * heuristic formatter when {@code source} is null, blank, or unknown.
+     * Resolve a formatter for the supplied source.  The lookup order is:
+     *   1. exact match on {@code source} (e.g. "jsearch" → JSearchFormatter)
+     *   2. the bean registered under {@link #DEFAULT_VENDOR} (LLM formatter
+     *      when enabled, otherwise nothing)
+     *   3. the heuristic formatter (always-on safety net)
      */
     public JobDescriptionFormatter forVendor(String source) {
-        if (source == null || source.isBlank()) return fallback;
-        return byVendor.getOrDefault(source.toLowerCase(), fallback);
+        if (source != null && !source.isBlank()) {
+            JobDescriptionFormatter direct = byVendor.get(source.toLowerCase());
+            if (direct != null) return direct;
+        }
+        JobDescriptionFormatter defaultFormatter = byVendor.get(DEFAULT_VENDOR);
+        if (defaultFormatter != null) return defaultFormatter;
+        return fallback;
     }
 }

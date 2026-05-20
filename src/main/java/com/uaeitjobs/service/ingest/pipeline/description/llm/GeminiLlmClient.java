@@ -1,0 +1,104 @@
+package com.uaeitjobs.service.ingest.pipeline.description.llm;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Gemini 1.5 Flash adapter — the cheapest viable model for this workload
+ * (~$0.00033 per typical job description).  Uses the public generative-
+ * language endpoint with API-key auth.
+ *
+ * Docs: https://ai.google.dev/api/rest/v1beta/models/generateContent
+ */
+@Slf4j
+@Component
+public class GeminiLlmClient implements LlmClient {
+
+    private static final String DEFAULT_MODEL = "gemini-1.5-flash";
+    private static final String DEFAULT_URL =
+            "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent";
+
+    private final LlmConfig config;
+    private final RestClient client;
+
+    public GeminiLlmClient(LlmConfig config) {
+        this.config = config;
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        // Connect can be tighter than read — Gemini takes a few seconds to respond.
+        factory.setConnectTimeout(Math.min(5_000, Math.max(1_000, config.timeoutMs() / 2)));
+        factory.setReadTimeout(config.timeoutMs());
+        this.client = RestClient.builder()
+                .requestFactory(factory)
+                .build();
+    }
+
+    @Override
+    public String name() {
+        return "gemini";
+    }
+
+    @Override
+    public String complete(String systemPrompt, String userPrompt) {
+        String model = config.model().isBlank() ? DEFAULT_MODEL : config.model();
+        String base = config.apiUrl().isBlank() ? String.format(DEFAULT_URL, model) : config.apiUrl();
+        String url = base + (base.contains("?") ? "&" : "?") + "key=" + config.apiKey();
+
+        Map<String, Object> body = Map.of(
+                "system_instruction", Map.of(
+                        "parts", List.of(Map.of("text", systemPrompt))
+                ),
+                "contents", List.of(Map.of(
+                        "role", "user",
+                        "parts", List.of(Map.of("text", userPrompt))
+                )),
+                "generationConfig", Map.of(
+                        "temperature",      config.temperature(),
+                        "maxOutputTokens",  config.maxOutputTokens(),
+                        "topP",             0.8,
+                        "candidateCount",   1
+                )
+        );
+
+        JsonNode response = client.post()
+                .uri(url)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(JsonNode.class);
+
+        if (response == null) {
+            throw new IllegalStateException("Gemini returned an empty body");
+        }
+
+        // {"candidates":[{"content":{"parts":[{"text":"..."}]}}]}
+        JsonNode candidates = response.path("candidates");
+        if (!candidates.isArray() || candidates.isEmpty()) {
+            // Gemini sometimes returns a `promptFeedback` block when it blocks content.
+            JsonNode feedback = response.path("promptFeedback");
+            String reason = feedback.isMissingNode() ? response.toString() : feedback.toString();
+            throw new IllegalStateException("Gemini returned no candidates: " + truncate(reason, 240));
+        }
+        String text = candidates.get(0)
+                .path("content")
+                .path("parts")
+                .path(0)
+                .path("text")
+                .asText("");
+        if (text.isBlank()) {
+            throw new IllegalStateException("Gemini candidate text is empty");
+        }
+        return text;
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return "";
+        return s.length() <= max ? s : s.substring(0, max) + "…";
+    }
+}
