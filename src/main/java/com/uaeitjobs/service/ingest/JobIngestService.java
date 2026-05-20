@@ -10,8 +10,11 @@ import com.uaeitjobs.service.ingest.pipeline.JobIngestPipeline.Outcome;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -43,6 +46,33 @@ public class JobIngestService {
     @Value("${app.ingest.jsearch.tier2-keywords:1}") private int jsearchTier2;
     @Value("${app.ingest.jsearch.tier3-keywords:0}") private int jsearchTier3;
     @Value("${app.ingest.jsearch.tier4-keywords:0}") private int jsearchTier4;
+
+    /** Prevents two concurrent ingest runs trampling each other. */
+    private final AtomicBoolean running = new AtomicBoolean(false);
+
+    /**
+     * Trigger {@link #runAll()} in a background thread. Returns immediately;
+     * progress is observable via the {@code ingest_run_log} table.
+     *
+     * Concurrent invocations are no-ops while a previous run is still active
+     * — the caller can poll the log to see when it finishes.
+     */
+    @Async
+    public void runAllAsync() {
+        if (!running.compareAndSet(false, true)) {
+            log.warn("Ingest already running — async trigger ignored.");
+            return;
+        }
+        try {
+            runAll();
+        } finally {
+            running.set(false);
+        }
+    }
+
+    public boolean isRunning() {
+        return running.get();
+    }
 
     /** Per-cron run: keyword-driven JSearch first, then the legacy sources. */
     public Map<String, Object> runAll() {

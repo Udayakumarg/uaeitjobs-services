@@ -1,6 +1,8 @@
 package com.uaeitjobs.controller;
 
 import com.uaeitjobs.dto.AdminDTO;
+import com.uaeitjobs.entity.IngestRunLog;
+import com.uaeitjobs.repository.IngestRunLogRepository;
 import com.uaeitjobs.service.AdminService;
 import com.uaeitjobs.service.CurrentUserService;
 import com.uaeitjobs.service.DemoJobSeedService;
@@ -8,9 +10,13 @@ import com.uaeitjobs.service.ingest.JobIngestService;
 import com.uaeitjobs.util.PageUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -21,6 +27,7 @@ public class AdminController {
     private final DemoJobSeedService demoJobSeedService;
     private final CurrentUserService currentUserService;
     private final JobIngestService jobIngestService;
+    private final IngestRunLogRepository ingestRunLogRepository;
 
     @GetMapping("/stats")
     public AdminDTO.StatsResponse stats() {
@@ -77,12 +84,39 @@ public class AdminController {
     }
 
     /**
-     * Manually trigger one ingest pass across every enabled source.
-     * Useful right after deploy when you don't want to wait for the
-     * next 6-hour cron tick.
+     * Asynchronously trigger one ingest pass across every enabled source.
+     * Returns 202 immediately; progress is observable via /ingest/status.
+     * If an ingest is already in flight the existing run is preserved and
+     * the trigger is reported as a no-op.
      */
     @PostMapping("/ingest/run")
-    public Map<String, Object> runIngest() {
-        return jobIngestService.runAll();
+    public ResponseEntity<Map<String, Object>> runIngest() {
+        if (jobIngestService.isRunning()) {
+            return ResponseEntity.accepted().body(Map.of(
+                    "status", "already_running",
+                    "message", "Ingest already in progress — poll /ingest/status."
+            ));
+        }
+        jobIngestService.runAllAsync();
+        return ResponseEntity.accepted().body(Map.of(
+                "status", "started",
+                "message", "Ingest started in background — poll /ingest/status for results."
+        ));
+    }
+
+    /**
+     * Read-only snapshot of the ingestion state: whether a run is currently
+     * active, plus the last few rows of the ingest_run_log table.
+     */
+    @GetMapping("/ingest/status")
+    public Map<String, Object> ingestStatus(@RequestParam(defaultValue = "10") int limit) {
+        int bounded = Math.max(1, Math.min(50, limit));
+        List<IngestRunLog> recent = ingestRunLogRepository.findAll(
+                PageRequest.of(0, bounded, Sort.by(Sort.Direction.DESC, "startedAt"))
+        ).getContent();
+        return Map.of(
+                "running", jobIngestService.isRunning(),
+                "recent", recent
+        );
     }
 }
