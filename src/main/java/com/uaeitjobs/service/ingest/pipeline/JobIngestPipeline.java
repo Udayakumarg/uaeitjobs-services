@@ -37,6 +37,7 @@ public class JobIngestPipeline {
     private final TechnologyExtractor techExtractor;
     private final RelevanceScorer scorer;
     private final DedupResolver dedup;
+    private final JobDescriptionFormatter descriptionFormatter;
     private final JobRepository jobRepository;
 
     public sealed interface Outcome {
@@ -126,7 +127,14 @@ public class JobIngestPipeline {
         job.setTitle(job.getNormalizedTitle());
         // CompanyName retains the original brand for display; normalized_company_name is what we filter on.
         job.setCompanyName(incoming.companyName());
-        job.setDescription(safe(incoming.description()));
+
+        // Two-part description handling:
+        //  - description           → plain text with \n\n + bullets (SEO, JSON-LD)
+        //  - description_sections  → JSON array of {heading, items[]} for rich UI rendering
+        var sections = descriptionFormatter.parseSections(safe(incoming.description()));
+        job.setDescription(descriptionFormatter.format(safe(incoming.description())));
+        job.setDescriptionSections(descriptionFormatter.toJson(sections));
+
         job.setRequirements(incoming.requirements());
         job.setSalaryMin(incoming.salaryMin());
         job.setSalaryMax(incoming.salaryMax());

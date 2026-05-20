@@ -97,6 +97,11 @@ public class Job {
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
     @Column(name = "technologies", columnDefinition = "jsonb", nullable = false)
     private String technologies = "[]";
+    /** Structured description as `[{heading, items[]}]`. Frontend renders
+     *  these as proper headed sections with bullet lists. */
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
+    @Column(name = "description_sections", columnDefinition = "jsonb", nullable = false)
+    private String descriptionSections = "[]";
     @Column(name = "visa_sponsorship")
     private Boolean visaSponsorship;
     @Column(name = "easy_apply")

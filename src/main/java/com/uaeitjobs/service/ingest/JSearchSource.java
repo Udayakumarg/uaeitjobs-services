@@ -130,7 +130,21 @@ public class JSearchSource {
         if (id == null || title == null || url == null) return null;
 
         String company = optText(node, "employer_name");
-        String description = optText(node, "job_description");
+
+        // Prefer the structured job_highlights when JSearch populates it —
+        // it's a dict of {Qualifications: [...], Responsibilities: [...],
+        // Benefits: [...]} which renders beautifully. Fall back to the
+        // free-text job_description otherwise.
+        String highlightsBlock = formatJobHighlights(node.path("job_highlights"));
+        String rawDesc = optText(node, "job_description");
+        String description;
+        if (!highlightsBlock.isBlank() && rawDesc != null) {
+            description = highlightsBlock + "\n\n" + rawDesc;
+        } else if (!highlightsBlock.isBlank()) {
+            description = highlightsBlock;
+        } else {
+            description = rawDesc;
+        }
         String publisher = firstNonBlank(
                 optText(node, "job_publisher"),
                 node.path("apply_options").isArray() && node.path("apply_options").size() > 0
@@ -183,6 +197,29 @@ public class JSearchSource {
                 url,
                 remote
         );
+    }
+
+    /**
+     * Render JSearch's structured `job_highlights` dict (Qualifications,
+     * Responsibilities, Benefits…) into clean section-headed text that
+     * the formatter can pass straight through to the UI.
+     */
+    private static String formatJobHighlights(JsonNode highlights) {
+        if (highlights == null || !highlights.isObject() || highlights.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        var fields = highlights.fields();
+        while (fields.hasNext()) {
+            var entry = fields.next();
+            JsonNode list = entry.getValue();
+            if (list == null || !list.isArray() || list.isEmpty()) continue;
+            if (sb.length() > 0) sb.append("\n\n");
+            sb.append(entry.getKey()).append(':');
+            for (JsonNode item : list) {
+                String text = item.asText("").trim();
+                if (!text.isEmpty()) sb.append(' ').append(text).append('.');
+            }
+        }
+        return sb.toString();
     }
 
     /**
