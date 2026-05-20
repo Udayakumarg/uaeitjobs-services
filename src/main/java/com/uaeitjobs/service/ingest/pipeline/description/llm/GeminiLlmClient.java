@@ -8,6 +8,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -78,22 +79,29 @@ public class GeminiLlmClient implements LlmClient {
                 )
         );
 
-        // Read as raw String + parse with Jackson — Google occasionally serves
-        // the JSON body with Content-Type: application/octet-stream which would
-        // otherwise blow up Spring's typed converter.
-        String responseBody = client.post()
+        // Read as raw bytes + decode + parse — byte[] sidesteps Spring's
+        // content-type-driven converter chain, so we're immune to upstream
+        // serving JSON with application/octet-stream.
+        byte[] responseBytes = client.post()
                 .uri(url)
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
-                .body(String.class);
+                .body(byte[].class);
 
-        if (responseBody == null || responseBody.isBlank()) {
+        if (responseBytes == null || responseBytes.length == 0) {
             throw new IllegalStateException("Gemini returned an empty body");
         }
+        String responseBody = new String(responseBytes, StandardCharsets.UTF_8);
 
-        JsonNode response = objectMapper.readTree(responseBody);
+        JsonNode response;
+        try {
+            response = objectMapper.readTree(responseBody);
+        } catch (Exception parseEx) {
+            throw new IllegalStateException(
+                    "Gemini returned non-JSON body: " + truncate(responseBody, 200), parseEx);
+        }
 
         // Google error envelope: {"error": {"code", "message", "status"}}
         if (response.has("error")) {

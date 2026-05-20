@@ -8,6 +8,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -63,22 +64,30 @@ public class OpenAiLlmClient implements LlmClient {
                 "max_tokens",  config.maxOutputTokens()
         );
 
-        // Read as raw String + parse with Jackson so we are immune to upstream
-        // Content-Type quirks (we've seen application/octet-stream from Google).
-        String responseBody = client.post()
+        // Read as raw bytes + decode + parse with Jackson — byte[] bypasses
+        // Spring's content-type-driven converter chain entirely so we're
+        // immune to upstream serving JSON with application/octet-stream.
+        byte[] responseBytes = client.post()
                 .uri(url)
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer " + config.apiKey())
                 .body(body)
                 .retrieve()
-                .body(String.class);
+                .body(byte[].class);
 
-        if (responseBody == null || responseBody.isBlank()) {
+        if (responseBytes == null || responseBytes.length == 0) {
             throw new IllegalStateException("OpenAI returned an empty body");
         }
+        String responseBody = new String(responseBytes, StandardCharsets.UTF_8);
 
-        JsonNode response = objectMapper.readTree(responseBody);
+        JsonNode response;
+        try {
+            response = objectMapper.readTree(responseBody);
+        } catch (Exception parseEx) {
+            throw new IllegalStateException(
+                    "OpenAI returned non-JSON body: " + truncate(responseBody, 200), parseEx);
+        }
 
         // OpenAI error envelope: {"error":{"message","type","code"}}
         if (response.has("error")) {

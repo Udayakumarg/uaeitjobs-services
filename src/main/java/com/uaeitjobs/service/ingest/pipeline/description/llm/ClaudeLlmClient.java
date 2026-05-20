@@ -8,6 +8,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -63,9 +64,9 @@ public class ClaudeLlmClient implements LlmClient {
                 ))
         );
 
-        // Read as raw String + parse with Jackson so we are immune to any
-        // upstream Content-Type quirks.
-        String responseBody = client.post()
+        // Read as raw bytes + decode + parse — byte[] sidesteps Spring's
+        // content-type-driven converter chain entirely.
+        byte[] responseBytes = client.post()
                 .uri(url)
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_JSON)
@@ -73,13 +74,20 @@ public class ClaudeLlmClient implements LlmClient {
                 .header("anthropic-version", API_VERSION)
                 .body(body)
                 .retrieve()
-                .body(String.class);
+                .body(byte[].class);
 
-        if (responseBody == null || responseBody.isBlank()) {
+        if (responseBytes == null || responseBytes.length == 0) {
             throw new IllegalStateException("Claude returned an empty body");
         }
+        String responseBody = new String(responseBytes, StandardCharsets.UTF_8);
 
-        JsonNode response = objectMapper.readTree(responseBody);
+        JsonNode response;
+        try {
+            response = objectMapper.readTree(responseBody);
+        } catch (Exception parseEx) {
+            throw new IllegalStateException(
+                    "Claude returned non-JSON body: " + truncate(responseBody, 200), parseEx);
+        }
 
         if (response.has("error")) {
             JsonNode err = response.path("error");
