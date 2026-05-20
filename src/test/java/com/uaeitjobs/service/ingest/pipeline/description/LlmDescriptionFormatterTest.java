@@ -14,11 +14,11 @@ class LlmDescriptionFormatterTest {
     private static final HeuristicDescriptionFormatter HEURISTIC = new HeuristicDescriptionFormatter();
 
     private static LlmConfig enabledConfig() {
-        return new LlmConfig(true, "gemini", "", "fake-key", "", 8000, 8000, 0.1, 2048);
+        return new LlmConfig(true, "gemini", "", "fake-key", "", 8000, 8000, 0.1, 2048, 0L);
     }
 
     private static LlmConfig disabledConfig() {
-        return new LlmConfig(false, "gemini", "", "", "", 8000, 8000, 0.1, 2048);
+        return new LlmConfig(false, "gemini", "", "", "", 8000, 8000, 0.1, 2048, 0L);
     }
 
     private static LlmClient mock(String name, String response, boolean shouldThrow) {
@@ -47,7 +47,7 @@ class LlmDescriptionFormatterTest {
     @Test
     @DisplayName("missing API key bypasses the LLM and uses the heuristic")
     void missingKeyFallsBack() {
-        LlmConfig cfg = new LlmConfig(true, "gemini", "", "  ", "", 8000, 8000, 0.1, 2048);
+        LlmConfig cfg = new LlmConfig(true, "gemini", "", "  ", "", 8000, 8000, 0.1, 2048, 0L);
         LlmDescriptionFormatter f = new LlmDescriptionFormatter(
                 cfg, HEURISTIC, List.of(mock("gemini", "ignored", false)));
         String html = f.toHtml("REQUIREMENTS - 5+ years Java - AWS.");
@@ -57,7 +57,7 @@ class LlmDescriptionFormatterTest {
     @Test
     @DisplayName("provider mismatch bypasses the LLM and uses the heuristic")
     void unknownProviderFallsBack() {
-        LlmConfig cfg = new LlmConfig(true, "ollama", "", "key", "", 8000, 8000, 0.1, 2048);
+        LlmConfig cfg = new LlmConfig(true, "ollama", "", "key", "", 8000, 8000, 0.1, 2048, 0L);
         LlmDescriptionFormatter f = new LlmDescriptionFormatter(
                 cfg, HEURISTIC, List.of(mock("gemini", "ignored", false)));
         String html = f.toHtml("Key Responsibilities: Build APIs.");

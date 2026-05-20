@@ -1,6 +1,7 @@
 package com.uaeitjobs.service.ingest.pipeline.description.llm;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -36,9 +37,11 @@ public class GeminiLlmClient implements LlmClient {
 
     private final LlmConfig config;
     private final RestClient client;
+    private final ObjectMapper objectMapper;
 
-    public GeminiLlmClient(LlmConfig config) {
+    public GeminiLlmClient(LlmConfig config, ObjectMapper objectMapper) {
         this.config = config;
+        this.objectMapper = objectMapper;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         // Connect can be tighter than read — Gemini takes a few seconds to respond.
         factory.setConnectTimeout(Math.min(5_000, Math.max(1_000, config.timeoutMs() / 2)));
@@ -54,7 +57,7 @@ public class GeminiLlmClient implements LlmClient {
     }
 
     @Override
-    public String complete(String systemPrompt, String userPrompt) {
+    public String complete(String systemPrompt, String userPrompt) throws Exception {
         String model = config.model().isBlank() ? DEFAULT_MODEL : config.model();
         String base = config.apiUrl().isBlank() ? String.format(DEFAULT_URL, model) : config.apiUrl();
         String url = base + (base.contains("?") ? "&" : "?") + "key=" + config.apiKey();
@@ -75,16 +78,22 @@ public class GeminiLlmClient implements LlmClient {
                 )
         );
 
-        JsonNode response = client.post()
+        // Read as raw String + parse with Jackson — Google occasionally serves
+        // the JSON body with Content-Type: application/octet-stream which would
+        // otherwise blow up Spring's typed converter.
+        String responseBody = client.post()
                 .uri(url)
                 .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
                 .body(body)
                 .retrieve()
-                .body(JsonNode.class);
+                .body(String.class);
 
-        if (response == null) {
+        if (responseBody == null || responseBody.isBlank()) {
             throw new IllegalStateException("Gemini returned an empty body");
         }
+
+        JsonNode response = objectMapper.readTree(responseBody);
 
         // Google error envelope: {"error": {"code", "message", "status"}}
         if (response.has("error")) {

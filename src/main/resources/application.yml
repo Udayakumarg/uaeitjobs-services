@@ -68,14 +68,16 @@ app:
   # falls back to the heuristic formatter so jobs never get dropped.
   #
   # Providers + currently-supported models (override via LLM_MODEL env var):
-  #   gemini  → defaults to gemini-2.5-flash (recommended).
+  #   openai  → defaults to gpt-4o-mini (Tier 1+ = 500 RPM, $0.0006/posting).
+  #             Alternatives: gpt-4o, gpt-4-turbo, gpt-3.5-turbo.
+  #   gemini  → defaults to gemini-2.5-flash. Free tier = 5 RPM (set
+  #             min-interval-ms=13000 to stay under it). Paid tier = 1500 RPM.
   #             Alternatives: gemini-2.0-flash, gemini-2.5-flash-lite.
-  #             gemini-1.5-flash is RETIRED — calls return 404.
   #   claude  → defaults to claude-3-5-haiku-20241022.
   #             Alternatives: claude-3-5-sonnet-20241022, claude-haiku-4-5.
   llm:
     enabled:           ${LLM_ENABLED:false}
-    provider:          ${LLM_PROVIDER:gemini}
+    provider:          ${LLM_PROVIDER:openai}
     api-url:           ${LLM_API_URL:}
     api-key:           ${LLM_API_KEY:}
     model:             ${LLM_MODEL:}
@@ -83,6 +85,8 @@ app:
     max-input-chars:   ${LLM_MAX_INPUT_CHARS:8000}
     temperature:       ${LLM_TEMPERATURE:0.1}
     max-output-tokens: ${LLM_MAX_OUTPUT_TOKENS:2048}
+    # 0 disables throttling. Set to 13000 for Gemini free tier (5 RPM).
+    min-interval-ms:   ${LLM_MIN_INTERVAL_MS:0}
   jwt:
     secret: ${JWT_SECRET:change-this-dev-secret-change-this-dev-secret-change-this-dev-secret}
     access-token-minutes: ${JWT_ACCESS_MINUTES:15}

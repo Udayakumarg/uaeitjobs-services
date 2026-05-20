@@ -12,26 +12,27 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Claude 3.5 Haiku adapter via the Anthropic Messages API.
+ * OpenAI Chat Completions adapter.
  *
- * Docs: https://docs.anthropic.com/en/api/messages
+ * Default model is {@code gpt-4o-mini} — the cheapest GPT-4-class model at
+ * roughly $0.15 / M input + $0.60 / M output tokens, which is ~$0.0006
+ * per typical job description.  Tier 1+ accounts (any prepaid balance)
+ * get 500 RPM, more than enough for our ingestion cadence.
  *
- * Tier 1 free credit gives plenty of room to test; production cost is
- * ~$0.005 per typical job description.
+ * Docs: https://platform.openai.com/docs/api-reference/chat/create
  */
 @Slf4j
 @Component
-public class ClaudeLlmClient implements LlmClient {
+public class OpenAiLlmClient implements LlmClient {
 
-    private static final String DEFAULT_MODEL = "claude-3-5-haiku-20241022";
-    private static final String DEFAULT_URL = "https://api.anthropic.com/v1/messages";
-    private static final String API_VERSION = "2023-06-01";
+    private static final String DEFAULT_MODEL = "gpt-4o-mini";
+    private static final String DEFAULT_URL = "https://api.openai.com/v1/chat/completions";
 
     private final LlmConfig config;
     private final RestClient client;
     private final ObjectMapper objectMapper;
 
-    public ClaudeLlmClient(LlmConfig config, ObjectMapper objectMapper) {
+    public OpenAiLlmClient(LlmConfig config, ObjectMapper objectMapper) {
         this.config = config;
         this.objectMapper = objectMapper;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -44,7 +45,7 @@ public class ClaudeLlmClient implements LlmClient {
 
     @Override
     public String name() {
-        return "claude";
+        return "openai";
     }
 
     @Override
@@ -54,49 +55,49 @@ public class ClaudeLlmClient implements LlmClient {
 
         Map<String, Object> body = Map.of(
                 "model",       model,
-                "max_tokens",  config.maxOutputTokens(),
+                "messages",    List.of(
+                        Map.of("role", "system", "content", systemPrompt),
+                        Map.of("role", "user",   "content", userPrompt)
+                ),
                 "temperature", config.temperature(),
-                "system",      systemPrompt,
-                "messages",    List.of(Map.of(
-                        "role",    "user",
-                        "content", userPrompt
-                ))
+                "max_tokens",  config.maxOutputTokens()
         );
 
-        // Read as raw String + parse with Jackson so we are immune to any
-        // upstream Content-Type quirks.
+        // Read as raw String + parse with Jackson so we are immune to upstream
+        // Content-Type quirks (we've seen application/octet-stream from Google).
         String responseBody = client.post()
                 .uri(url)
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_JSON)
-                .header("x-api-key",         config.apiKey())
-                .header("anthropic-version", API_VERSION)
+                .header("Authorization", "Bearer " + config.apiKey())
                 .body(body)
                 .retrieve()
                 .body(String.class);
 
         if (responseBody == null || responseBody.isBlank()) {
-            throw new IllegalStateException("Claude returned an empty body");
+            throw new IllegalStateException("OpenAI returned an empty body");
         }
 
         JsonNode response = objectMapper.readTree(responseBody);
 
+        // OpenAI error envelope: {"error":{"message","type","code"}}
         if (response.has("error")) {
             JsonNode err = response.path("error");
             throw new IllegalStateException(String.format(
-                    "Claude error %s: %s",
+                    "OpenAI error %s (%s): %s",
+                    err.path("code").asText("?"),
                     err.path("type").asText("?"),
                     err.path("message").asText(response.toString())));
         }
 
-        // {"content":[{"type":"text","text":"..."}], "stop_reason":"end_turn"}
-        JsonNode content = response.path("content");
-        if (!content.isArray() || content.isEmpty()) {
-            throw new IllegalStateException("Claude returned no content: " + truncate(response.toString(), 240));
+        // {"choices":[{"message":{"role":"assistant","content":"..."}}]}
+        JsonNode choices = response.path("choices");
+        if (!choices.isArray() || choices.isEmpty()) {
+            throw new IllegalStateException("OpenAI returned no choices: " + truncate(responseBody, 240));
         }
-        String text = content.get(0).path("text").asText("");
+        String text = choices.get(0).path("message").path("content").asText("");
         if (text.isBlank()) {
-            throw new IllegalStateException("Claude content text is empty");
+            throw new IllegalStateException("OpenAI message content is empty");
         }
         return text;
     }

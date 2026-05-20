@@ -28,7 +28,14 @@ public record LlmConfig(
         /** Generation temperature. Low values (0.0–0.2) keep formatting deterministic. */
         double temperature,
         /** Output token cap. ~2048 covers even very long job descriptions in clean HTML. */
-        int maxOutputTokens
+        int maxOutputTokens,
+        /**
+         * Minimum interval between LLM calls (ms). 0 disables throttling.
+         *
+         * Gemini free tier = 5 RPM = ~12s/call, so the free-tier safe value is
+         * 13000. Paid Gemini (1500 RPM) and Claude paid tiers can stay at 0.
+         */
+        long minIntervalMs
 ) {
     public LlmConfig {
         if (provider == null || provider.isBlank()) provider = "gemini";
@@ -39,5 +46,6 @@ public record LlmConfig(
         if (maxInputChars <= 0) maxInputChars = 8000;
         if (temperature < 0) temperature = 0.1;
         if (maxOutputTokens <= 0) maxOutputTokens = 2048;
+        if (minIntervalMs < 0) minIntervalMs = 0;
     }
 }

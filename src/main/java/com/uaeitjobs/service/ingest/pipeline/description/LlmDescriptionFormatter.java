@@ -76,6 +76,8 @@ public class LlmDescriptionFormatter implements JobDescriptionFormatter {
     private final LlmConfig config;
     private final HeuristicDescriptionFormatter heuristic;
     private final Map<String, LlmClient> clientsByName;
+    /** Last LLM call timestamp — used for the optional rate-limit throttle. */
+    private volatile long lastLlmCallAt = 0L;
 
     public LlmDescriptionFormatter(LlmConfig config,
                                    HeuristicDescriptionFormatter heuristic,
@@ -113,6 +115,7 @@ public class LlmDescriptionFormatter implements JobDescriptionFormatter {
 
         String input = truncateForBudget(raw);
         LlmClient client = clientsByName.get(config.provider().toLowerCase());
+        throttleIfConfigured();
         long start = System.currentTimeMillis();
         try {
             String response = client.complete(SYSTEM_PROMPT, input);
@@ -137,6 +140,28 @@ public class LlmDescriptionFormatter implements JobDescriptionFormatter {
     // ───────────────────────────────────────────────────────────────
     //  Internals
     // ───────────────────────────────────────────────────────────────
+
+    /**
+     * Optional per-call rate limiter. When {@code app.llm.min-interval-ms} is
+     * non-zero, we sleep before each call so the upstream rate limit is
+     * respected. For Gemini free tier set this to 13000 (5 RPM); for paid
+     * OpenAI Tier 1+ (500 RPM) leave it at 0.
+     */
+    private synchronized void throttleIfConfigured() {
+        long min = config.minIntervalMs();
+        if (min <= 0) return;
+        long since = System.currentTimeMillis() - lastLlmCallAt;
+        if (since < min) {
+            long wait = min - since;
+            try {
+                log.debug("LLM throttle: sleeping {}ms to respect rate limit", wait);
+                Thread.sleep(wait);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        lastLlmCallAt = System.currentTimeMillis();
+    }
 
     private boolean shouldCallLlm() {
         if (!config.enabled()) return false;
