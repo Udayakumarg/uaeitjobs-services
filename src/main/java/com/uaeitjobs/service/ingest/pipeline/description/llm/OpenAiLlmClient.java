@@ -44,7 +44,10 @@ public class OpenAiLlmClient implements LlmClient {
                 .connectTimeout(Duration.ofMillis(Math.min(5_000, Math.max(1_000, config.timeoutMs() / 2))))
                 // HTTP/2 by default; OpenAI handles both fine. Falling back to HTTP/1.1
                 // here would mask any HTTP/2 negotiation issues in the JVM/JDK build.
-                .version(HttpClient.Version.HTTP_2)
+                // HTTP/1.1 + new connection per request — JDK's HTTP/2 implementation
+                // has known sticky-connection issues that surface as request-timeouts
+                // after the first successful call in a batch.
+                .version(HttpClient.Version.HTTP_1_1)
                 .build();
     }
 

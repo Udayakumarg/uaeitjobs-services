@@ -42,7 +42,9 @@ public record LlmConfig(
         if (apiUrl == null) apiUrl = "";
         if (apiKey == null) apiKey = "";
         if (model == null) model = "";
-        if (timeoutMs <= 0) timeoutMs = 8000;
+        // Real LLM calls with ~1000 token prompts routinely take 5-15s.
+        // 8s was too tight and caused HttpTimeoutException for valid responses.
+        if (timeoutMs <= 0) timeoutMs = 30_000;
         if (maxInputChars <= 0) maxInputChars = 8000;
         if (temperature < 0) temperature = 0.1;
         if (maxOutputTokens <= 0) maxOutputTokens = 2048;

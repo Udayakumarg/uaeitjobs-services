@@ -81,7 +81,7 @@ app:
     api-url:           ${LLM_API_URL:}
     api-key:           ${LLM_API_KEY:}
     model:             ${LLM_MODEL:}
-    timeout-ms:        ${LLM_TIMEOUT_MS:8000}
+    timeout-ms:        ${LLM_TIMEOUT_MS:30000}
     max-input-chars:   ${LLM_MAX_INPUT_CHARS:8000}
     temperature:       ${LLM_TEMPERATURE:0.1}
     max-output-tokens: ${LLM_MAX_OUTPUT_TOKENS:2048}
