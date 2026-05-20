@@ -131,8 +131,20 @@ public class LlmDescriptionFormatter implements JobDescriptionFormatter {
             return html;
         } catch (Exception e) {
             long elapsed = System.currentTimeMillis() - start;
+            // Walk the cause chain so the underlying IOException / Jackson error
+            // shows up in the log instead of only the wrapper message.
+            StringBuilder chain = new StringBuilder(e.getClass().getSimpleName())
+                    .append(": ").append(e.getMessage());
+            Throwable cause = e.getCause();
+            int depth = 0;
+            while (cause != null && depth < 3) {
+                chain.append(" ← ").append(cause.getClass().getSimpleName())
+                     .append(": ").append(cause.getMessage());
+                cause = cause.getCause();
+                depth++;
+            }
             log.warn("LLM [{}] failed after {}ms ({}) — falling back to heuristic",
-                    client.name(), elapsed, e.getClass().getSimpleName() + ": " + e.getMessage());
+                    client.name(), elapsed, chain);
             return heuristic.toHtml(raw);
         }
     }

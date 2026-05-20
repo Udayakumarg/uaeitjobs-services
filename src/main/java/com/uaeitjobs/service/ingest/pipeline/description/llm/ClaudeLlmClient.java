@@ -3,43 +3,42 @@ package com.uaeitjobs.service.ingest.pipeline.description.llm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Claude 3.5 Haiku adapter via the Anthropic Messages API.
+ * Anthropic Messages API adapter — built on Java 11+'s native HttpClient
+ * so we sidestep Spring's converter chain entirely.
  *
+ * Default model: claude-3-5-haiku-20241022.
  * Docs: https://docs.anthropic.com/en/api/messages
- *
- * Tier 1 free credit gives plenty of room to test; production cost is
- * ~$0.005 per typical job description.
  */
 @Slf4j
 @Component
 public class ClaudeLlmClient implements LlmClient {
 
     private static final String DEFAULT_MODEL = "claude-3-5-haiku-20241022";
-    private static final String DEFAULT_URL = "https://api.anthropic.com/v1/messages";
-    private static final String API_VERSION = "2023-06-01";
+    private static final String DEFAULT_URL   = "https://api.anthropic.com/v1/messages";
+    private static final String API_VERSION   = "2023-06-01";
 
     private final LlmConfig config;
-    private final RestClient client;
     private final ObjectMapper objectMapper;
+    private final HttpClient httpClient;
 
     public ClaudeLlmClient(LlmConfig config, ObjectMapper objectMapper) {
         this.config = config;
         this.objectMapper = objectMapper;
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Math.min(5_000, Math.max(1_000, config.timeoutMs() / 2)));
-        factory.setReadTimeout(config.timeoutMs());
-        this.client = RestClient.builder()
-                .requestFactory(factory)
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(Math.min(5_000, Math.max(1_000, config.timeoutMs() / 2))))
+                .version(HttpClient.Version.HTTP_2)
                 .build();
     }
 
@@ -63,44 +62,55 @@ public class ClaudeLlmClient implements LlmClient {
                         "content", userPrompt
                 ))
         );
+        byte[] requestBytes = objectMapper.writeValueAsBytes(body);
 
-        // Read as raw bytes + decode + parse — byte[] sidesteps Spring's
-        // content-type-driven converter chain entirely.
-        byte[] responseBytes = client.post()
-                .uri(url)
-                .contentType(MediaType.APPLICATION_JSON)
-                .accept(MediaType.APPLICATION_JSON)
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofMillis(config.timeoutMs()))
                 .header("x-api-key",         config.apiKey())
                 .header("anthropic-version", API_VERSION)
-                .body(body)
-                .retrieve()
-                .body(byte[].class);
+                .header("Content-Type",      "application/json")
+                .header("Accept",            "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(requestBytes))
+                .build();
 
-        if (responseBytes == null || responseBytes.length == 0) {
+        HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        String responseBody = new String(response.body(), StandardCharsets.UTF_8);
+
+        if (response.statusCode() >= 400) {
+            try {
+                JsonNode err = objectMapper.readTree(responseBody).path("error");
+                if (!err.isMissingNode()) {
+                    throw new IllegalStateException(String.format(
+                            "Claude HTTP %d (%s): %s",
+                            response.statusCode(),
+                            err.path("type").asText("?"),
+                            err.path("message").asText("")));
+                }
+            } catch (IllegalStateException rethrow) {
+                throw rethrow;
+            } catch (Exception ignore) {
+                // payload wasn't JSON — fall through
+            }
+            throw new IllegalStateException(
+                    "Claude HTTP " + response.statusCode() + ": " + truncate(responseBody, 240));
+        }
+
+        if (responseBody.isBlank()) {
             throw new IllegalStateException("Claude returned an empty body");
         }
-        String responseBody = new String(responseBytes, StandardCharsets.UTF_8);
 
-        JsonNode response;
+        JsonNode root;
         try {
-            response = objectMapper.readTree(responseBody);
+            root = objectMapper.readTree(responseBody);
         } catch (Exception parseEx) {
             throw new IllegalStateException(
                     "Claude returned non-JSON body: " + truncate(responseBody, 200), parseEx);
         }
 
-        if (response.has("error")) {
-            JsonNode err = response.path("error");
-            throw new IllegalStateException(String.format(
-                    "Claude error %s: %s",
-                    err.path("type").asText("?"),
-                    err.path("message").asText(response.toString())));
-        }
-
-        // {"content":[{"type":"text","text":"..."}], "stop_reason":"end_turn"}
-        JsonNode content = response.path("content");
+        JsonNode content = root.path("content");
         if (!content.isArray() || content.isEmpty()) {
-            throw new IllegalStateException("Claude returned no content: " + truncate(response.toString(), 240));
+            throw new IllegalStateException("Claude returned no content: " + truncate(responseBody, 240));
         }
         String text = content.get(0).path("text").asText("");
         if (text.isBlank()) {

@@ -3,19 +3,25 @@ package com.uaeitjobs.service.ingest.pipeline.description.llm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestClient;
 
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Gemini 1.5 Flash adapter — the cheapest viable model for this workload
- * (~$0.00033 per typical job description).  Uses the public generative-
- * language endpoint with API-key auth.
+ * Gemini Flash adapter — built on Java 11+'s native HttpClient so we
+ * sidestep Spring's converter chain entirely (which mis-reports
+ * application/octet-stream responses as extraction errors).
+ *
+ * Default model: gemini-2.5-flash (the gemini-1.5-flash model was retired
+ * from v1beta in mid-2025).
  *
  * Docs: https://ai.google.dev/api/rest/v1beta/models/generateContent
  */
@@ -23,32 +29,20 @@ import java.util.Map;
 @Component
 public class GeminiLlmClient implements LlmClient {
 
-    /**
-     * Default model. Google retired `gemini-1.5-flash` from the v1beta endpoint
-     * in mid-2025 — calls to it now return 404. The current Flash GA models are:
-     *   gemini-2.5-flash       ← recommended, used here by default
-     *   gemini-2.0-flash       ← stable earlier 2.x series
-     *   gemini-2.5-flash-lite  ← cheapest, slightly lower quality
-     * Override with {@code app.llm.model} (env var {@code LLM_MODEL}) without
-     * touching code.
-     */
     private static final String DEFAULT_MODEL = "gemini-2.5-flash";
     private static final String DEFAULT_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent";
 
     private final LlmConfig config;
-    private final RestClient client;
     private final ObjectMapper objectMapper;
+    private final HttpClient httpClient;
 
     public GeminiLlmClient(LlmConfig config, ObjectMapper objectMapper) {
         this.config = config;
         this.objectMapper = objectMapper;
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        // Connect can be tighter than read — Gemini takes a few seconds to respond.
-        factory.setConnectTimeout(Math.min(5_000, Math.max(1_000, config.timeoutMs() / 2)));
-        factory.setReadTimeout(config.timeoutMs());
-        this.client = RestClient.builder()
-                .requestFactory(factory)
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofMillis(Math.min(5_000, Math.max(1_000, config.timeoutMs() / 2))))
+                .version(HttpClient.Version.HTTP_2)
                 .build();
     }
 
@@ -60,65 +54,82 @@ public class GeminiLlmClient implements LlmClient {
     @Override
     public String complete(String systemPrompt, String userPrompt) throws Exception {
         String model = config.model().isBlank() ? DEFAULT_MODEL : config.model();
-        String base = config.apiUrl().isBlank() ? String.format(DEFAULT_URL, model) : config.apiUrl();
-        String url = base + (base.contains("?") ? "&" : "?") + "key=" + config.apiKey();
+        String base  = config.apiUrl().isBlank() ? String.format(DEFAULT_URL, model) : config.apiUrl();
+        String url   = base + (base.contains("?") ? "&" : "?") + "key=" + URLEncoder.encode(config.apiKey(), StandardCharsets.UTF_8);
 
         Map<String, Object> body = Map.of(
                 "system_instruction", Map.of(
                         "parts", List.of(Map.of("text", systemPrompt))
                 ),
                 "contents", List.of(Map.of(
-                        "role", "user",
+                        "role",  "user",
                         "parts", List.of(Map.of("text", userPrompt))
                 )),
                 "generationConfig", Map.of(
-                        "temperature",      config.temperature(),
-                        "maxOutputTokens",  config.maxOutputTokens(),
-                        "topP",             0.8,
-                        "candidateCount",   1
+                        "temperature",     config.temperature(),
+                        "maxOutputTokens", config.maxOutputTokens(),
+                        "topP",            0.8,
+                        "candidateCount",  1
                 )
         );
+        byte[] requestBytes = objectMapper.writeValueAsBytes(body);
 
-        // Read as raw bytes + decode + parse — byte[] sidesteps Spring's
-        // content-type-driven converter chain, so we're immune to upstream
-        // serving JSON with application/octet-stream.
-        byte[] responseBytes = client.post()
-                .uri(url)
-                .contentType(MediaType.APPLICATION_JSON)
-                .accept(MediaType.APPLICATION_JSON)
-                .body(body)
-                .retrieve()
-                .body(byte[].class);
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofMillis(config.timeoutMs()))
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(requestBytes))
+                .build();
 
-        if (responseBytes == null || responseBytes.length == 0) {
+        HttpResponse<byte[]> response = httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        String responseBody = new String(response.body(), StandardCharsets.UTF_8);
+
+        if (response.statusCode() >= 400) {
+            try {
+                JsonNode err = objectMapper.readTree(responseBody).path("error");
+                if (!err.isMissingNode()) {
+                    throw new IllegalStateException(String.format(
+                            "Gemini HTTP %d %s (%s): %s",
+                            response.statusCode(),
+                            err.path("code").asText("?"),
+                            err.path("status").asText("?"),
+                            err.path("message").asText("")));
+                }
+            } catch (IllegalStateException rethrow) {
+                throw rethrow;
+            } catch (Exception ignore) {
+                // payload wasn't JSON — fall through
+            }
+            throw new IllegalStateException(
+                    "Gemini HTTP " + response.statusCode() + ": " + truncate(responseBody, 240));
+        }
+
+        if (responseBody.isBlank()) {
             throw new IllegalStateException("Gemini returned an empty body");
         }
-        String responseBody = new String(responseBytes, StandardCharsets.UTF_8);
 
-        JsonNode response;
+        JsonNode root;
         try {
-            response = objectMapper.readTree(responseBody);
+            root = objectMapper.readTree(responseBody);
         } catch (Exception parseEx) {
             throw new IllegalStateException(
                     "Gemini returned non-JSON body: " + truncate(responseBody, 200), parseEx);
         }
 
-        // Google error envelope: {"error": {"code", "message", "status"}}
-        if (response.has("error")) {
-            JsonNode err = response.path("error");
+        if (root.has("error")) {
+            JsonNode err = root.path("error");
             throw new IllegalStateException(String.format(
                     "Gemini error %s (%s): %s",
                     err.path("code").asText("?"),
                     err.path("status").asText("?"),
-                    err.path("message").asText(response.toString())));
+                    err.path("message").asText(responseBody)));
         }
 
-        // {"candidates":[{"content":{"parts":[{"text":"..."}]}}]}
-        JsonNode candidates = response.path("candidates");
+        JsonNode candidates = root.path("candidates");
         if (!candidates.isArray() || candidates.isEmpty()) {
-            // Gemini sometimes returns a `promptFeedback` block when it blocks content.
-            JsonNode feedback = response.path("promptFeedback");
-            String reason = feedback.isMissingNode() ? response.toString() : feedback.toString();
+            JsonNode feedback = root.path("promptFeedback");
+            String reason = feedback.isMissingNode() ? responseBody : feedback.toString();
             throw new IllegalStateException("Gemini returned no candidates: " + truncate(reason, 240));
         }
         String text = candidates.get(0)
