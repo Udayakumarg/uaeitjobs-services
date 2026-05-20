@@ -67,9 +67,12 @@ app:
   # into semantic HTML. Any failure (network, timeout, malformed reply)
   # falls back to the heuristic formatter so jobs never get dropped.
   #
-  # Providers:
-  #   gemini  → Gemini 1.5 Flash  (cheapest, ~$0.0003 per posting)
-  #   claude  → Claude 3.5 Haiku  (best quality,  ~$0.005 per posting)
+  # Providers + currently-supported models (override via LLM_MODEL env var):
+  #   gemini  → defaults to gemini-2.5-flash (recommended).
+  #             Alternatives: gemini-2.0-flash, gemini-2.5-flash-lite.
+  #             gemini-1.5-flash is RETIRED — calls return 404.
+  #   claude  → defaults to claude-3-5-haiku-20241022.
+  #             Alternatives: claude-3-5-sonnet-20241022, claude-haiku-4-5.
   llm:
     enabled:           ${LLM_ENABLED:false}
     provider:          ${LLM_PROVIDER:gemini}

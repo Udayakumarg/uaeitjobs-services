@@ -21,7 +21,16 @@ import java.util.Map;
 @Component
 public class GeminiLlmClient implements LlmClient {
 
-    private static final String DEFAULT_MODEL = "gemini-1.5-flash";
+    /**
+     * Default model. Google retired `gemini-1.5-flash` from the v1beta endpoint
+     * in mid-2025 — calls to it now return 404. The current Flash GA models are:
+     *   gemini-2.5-flash       ← recommended, used here by default
+     *   gemini-2.0-flash       ← stable earlier 2.x series
+     *   gemini-2.5-flash-lite  ← cheapest, slightly lower quality
+     * Override with {@code app.llm.model} (env var {@code LLM_MODEL}) without
+     * touching code.
+     */
+    private static final String DEFAULT_MODEL = "gemini-2.5-flash";
     private static final String DEFAULT_URL =
             "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent";
 
@@ -75,6 +84,16 @@ public class GeminiLlmClient implements LlmClient {
 
         if (response == null) {
             throw new IllegalStateException("Gemini returned an empty body");
+        }
+
+        // Google error envelope: {"error": {"code", "message", "status"}}
+        if (response.has("error")) {
+            JsonNode err = response.path("error");
+            throw new IllegalStateException(String.format(
+                    "Gemini error %s (%s): %s",
+                    err.path("code").asText("?"),
+                    err.path("status").asText("?"),
+                    err.path("message").asText(response.toString())));
         }
 
         // {"candidates":[{"content":{"parts":[{"text":"..."}]}}]}
