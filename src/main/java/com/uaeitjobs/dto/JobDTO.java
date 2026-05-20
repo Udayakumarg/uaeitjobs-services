@@ -61,7 +61,8 @@ public final class JobDTO {
             boolean remoteUae,
             String jobCategory,
             String applyUrl,
-            String descriptionSections
+            String descriptionSections,
+            String descriptionHtml
     ) {
     }
 }

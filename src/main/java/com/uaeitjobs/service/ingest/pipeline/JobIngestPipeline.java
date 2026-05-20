@@ -3,6 +3,7 @@ package com.uaeitjobs.service.ingest.pipeline;
 import com.uaeitjobs.entity.Job;
 import com.uaeitjobs.repository.JobRepository;
 import com.uaeitjobs.service.ingest.IngestedJob;
+import com.uaeitjobs.service.ingest.pipeline.description.DescriptionFormatterRegistry;
 import com.uaeitjobs.util.JobCategoryClassifier;
 import com.uaeitjobs.util.SlugGenerator;
 import lombok.RequiredArgsConstructor;
@@ -38,6 +39,7 @@ public class JobIngestPipeline {
     private final RelevanceScorer scorer;
     private final DedupResolver dedup;
     private final JobDescriptionFormatter descriptionFormatter;
+    private final DescriptionFormatterRegistry formatterRegistry;
     private final JobRepository jobRepository;
 
     public sealed interface Outcome {
@@ -128,12 +130,17 @@ public class JobIngestPipeline {
         // CompanyName retains the original brand for display; normalized_company_name is what we filter on.
         job.setCompanyName(incoming.companyName());
 
-        // Two-part description handling:
-        //  - description           → plain text with \n\n + bullets (SEO, JSON-LD)
-        //  - description_sections  → JSON array of {heading, items[]} for rich UI rendering
-        var sections = descriptionFormatter.parseSections(safe(incoming.description()));
-        job.setDescription(descriptionFormatter.format(safe(incoming.description())));
+        // Three-part description handling:
+        //  - description           → plain text  (SEO, JSON-LD, sitemap)
+        //  - description_sections  → JSONB array of {heading, items[]} (legacy renderer)
+        //  - description_html      → sanitised HTML from the per-vendor formatter
+        //                           (primary UI rendering)
+        String raw = safe(incoming.description());
+        var sections = descriptionFormatter.parseSections(raw);
+        job.setDescription(descriptionFormatter.format(raw));
         job.setDescriptionSections(descriptionFormatter.toJson(sections));
+        job.setDescriptionHtml(
+                formatterRegistry.forVendor(incoming.source()).toHtml(raw));
 
         job.setRequirements(incoming.requirements());
         job.setSalaryMin(incoming.salaryMin());

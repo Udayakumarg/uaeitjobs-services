@@ -102,6 +102,10 @@ public class Job {
     @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
     @Column(name = "description_sections", columnDefinition = "jsonb", nullable = false)
     private String descriptionSections = "[]";
+    /** Pre-rendered, sanitised HTML — emitted by the vendor-aware
+     *  description formatter chain. Frontend injects this directly. */
+    @Column(name = "description_html", columnDefinition = "text")
+    private String descriptionHtml;
     @Column(name = "visa_sponsorship")
     private Boolean visaSponsorship;
     @Column(name = "easy_apply")
