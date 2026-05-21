@@ -9,6 +9,8 @@ import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
 
+import java.net.InetAddress;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -30,6 +32,7 @@ public class LinkedInScraperService {
         if (linkedInUrl == null || !LINKEDIN_JOB.matcher(linkedInUrl).matches()) {
             throw new ValidationException("Invalid LinkedIn job URL format");
         }
+        validateNoSsrf(linkedInUrl);
 
         try {
             Document doc = Jsoup.connect(linkedInUrl)
@@ -168,6 +171,32 @@ public class LinkedInScraperService {
             return "senior";
         }
         return "mid";
+    }
+
+    /**
+     * Resolves the host to an IP address and rejects private/loopback/link-local
+     * ranges to prevent Server-Side Request Forgery (SSRF) via open redirects or
+     * DNS rebinding.
+     */
+    private void validateNoSsrf(String rawUrl) {
+        try {
+            String host = new URL(rawUrl).getHost();
+            // Strict host allowlist — only linkedin.com and www.linkedin.com
+            if (!"www.linkedin.com".equals(host) && !"linkedin.com".equals(host)) {
+                throw new ValidationException("Only linkedin.com URLs are permitted");
+            }
+            InetAddress addr = InetAddress.getByName(host);
+            if (addr.isLoopbackAddress() || addr.isSiteLocalAddress()
+                    || addr.isLinkLocalAddress() || addr.isAnyLocalAddress()
+                    || addr.isMulticastAddress()) {
+                log.warn("SSRF probe blocked — URL {} resolved to forbidden address {}", rawUrl, addr.getHostAddress());
+                throw new ValidationException("URL resolves to a forbidden network address");
+            }
+        } catch (java.net.MalformedURLException e) {
+            throw new ValidationException("Malformed URL");
+        } catch (java.net.UnknownHostException e) {
+            throw new ValidationException("Could not resolve URL host");
+        }
     }
 
     private String textOfFirst(Document doc, String... selectors) {

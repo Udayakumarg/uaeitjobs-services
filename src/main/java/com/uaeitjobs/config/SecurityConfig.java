@@ -39,6 +39,23 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .headers(headers -> headers
+                        // Deny framing — clickjacking protection
+                        .frameOptions(frame -> frame.deny())
+                        // Prevent MIME-type sniffing
+                        .contentTypeOptions(ct -> {})
+                        // HSTS: 1 year, include subdomains
+                        .httpStrictTransportSecurity(hsts -> hsts
+                                .includeSubDomains(true)
+                                .maxAgeInSeconds(31_536_000))
+                        // Disable the legacy X-XSS-Protection header (modern browsers ignore it; old ones may misuse it)
+                        .xssProtection(xss -> xss.disable())
+                        // Referrer-Policy: only send origin on same-origin requests
+                        .referrerPolicy(ref -> ref.policy(
+                                org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                        // Permissions-Policy: lock down powerful browser features
+                        .permissionsPolicy(pp -> pp.policy(
+                                "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()")))
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(entryPoint).accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/actuator/health").permitAll()

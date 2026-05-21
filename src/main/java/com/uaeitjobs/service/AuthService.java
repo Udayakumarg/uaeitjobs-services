@@ -64,6 +64,9 @@ public class AuthService {
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
             throw new UnauthorizedException("Invalid credentials");
         }
+        if (!user.isVerified()) {
+            throw new UnauthorizedException("Please verify your email address before logging in");
+        }
         user.setLastLogin(OffsetDateTime.now());
         return issueTokens(user);
     }
@@ -74,6 +77,10 @@ public class AuthService {
                 .filter(token -> !token.isRevoked())
                 .filter(token -> token.getExpiresAt().isAfter(OffsetDateTime.now()))
                 .orElseThrow(() -> new UnauthorizedException("Invalid refresh token"));
+        // Token rotation: revoke the consumed token before issuing a new one.
+        // Reuse of a revoked token indicates potential token theft.
+        refreshToken.setRevoked(true);
+        refreshTokenRepository.save(refreshToken);
         return issueTokens(refreshToken.getUser());
     }
 

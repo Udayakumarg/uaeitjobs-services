@@ -57,10 +57,10 @@ public class HRService {
 
     @Transactional
     public ApplicationDTO.Response updateApplicationStatus(Long id, User user, ApplicationStatus status) {
-        ApplicationEntity application = applicationRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("Application not found"));
-        if (application.getJob().getPostedBy() == null || !application.getJob().getPostedBy().getId().equals(user.getId())) {
-            throw new ValidationException("You do not own this job");
-        }
+        // Single round-trip: verifies both existence AND ownership — prevents IDOR.
+        // Generic error message avoids leaking whether the record exists at all.
+        ApplicationEntity application = applicationRepository.findByIdAndJobOwner(id, user)
+                .orElseThrow(() -> new ValidationException("Application not found or access denied"));
         application.setStatus(status);
         return applicationMapper.toResponse(application);
     }
