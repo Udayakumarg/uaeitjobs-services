@@ -8,13 +8,19 @@ import com.uaeitjobs.util.JobCategoryClassifier;
 import com.uaeitjobs.util.SlugGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.annotation.PostConstruct;
+import java.net.URI;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * The intelligence layer's main entry point.
@@ -43,6 +49,65 @@ public class JobIngestPipeline {
     private final JobRepository jobRepository;
     private final CompanyLogoResolver logoResolver;
 
+    /**
+     * Comma-separated allowlist of publisher domains / names that an
+     * ingested job must come from. Empty (default) disables the filter
+     * so every job goes through.
+     * <p>Matching is case-insensitive substring on both
+     * {@code publisher} and the host of {@code applyUrl}.
+     * <p>Example: {@code linkedin,bayt,naukrigulf,naukri.com,
+     * gulftalent,indeed,talentmate,dubai careers,tamm,nafis,u.ae}
+     */
+    @Value("${app.ingest.publisher-allowlist:}")
+    private String publisherAllowlistRaw;
+
+    private Set<String> publisherAllowlist = Set.of();
+
+    @PostConstruct
+    void initPublisherAllowlist() {
+        if (publisherAllowlistRaw == null || publisherAllowlistRaw.isBlank()) {
+            publisherAllowlist = Set.of();
+            log.info("Publisher allowlist disabled — all ingested jobs accepted (apart from existing filters).");
+            return;
+        }
+        publisherAllowlist = Arrays.stream(publisherAllowlistRaw.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(s -> s.toLowerCase(Locale.ROOT))
+                .collect(java.util.stream.Collectors.toCollection(HashSet::new));
+        log.info("Publisher allowlist active ({} entries): {}", publisherAllowlist.size(), publisherAllowlist);
+    }
+
+    /**
+     * Returns true when no allowlist is configured (accept-all) OR when
+     * the publisher name / apply URL host matches one of the entries.
+     */
+    private boolean isPublisherAllowed(IngestedJob incoming) {
+        if (publisherAllowlist.isEmpty()) return true;
+        String publisher = incoming.publisher();
+        if (publisher != null) {
+            String p = publisher.toLowerCase(Locale.ROOT);
+            for (String allowed : publisherAllowlist) {
+                if (p.contains(allowed)) return true;
+            }
+        }
+        String applyUrl = incoming.applyUrl();
+        if (applyUrl != null && !applyUrl.isBlank()) {
+            try {
+                String host = URI.create(applyUrl).getHost();
+                if (host != null) {
+                    String h = host.toLowerCase(Locale.ROOT);
+                    for (String allowed : publisherAllowlist) {
+                        if (h.contains(allowed)) return true;
+                    }
+                }
+            } catch (Exception ignored) {
+                // malformed URL — fall through and reject
+            }
+        }
+        return false;
+    }
+
     public sealed interface Outcome {
         record Inserted(Job job)                          implements Outcome {}
         record Updated(Job job, DedupResolver.Level level) implements Outcome {}
@@ -55,6 +120,10 @@ public class JobIngestPipeline {
         // ── 1. Hard reject ────────────────────────────────────────
         if (scorer.hardReject(incoming.title(), incoming.locationUae(), null, incoming.description())) {
             return new Outcome.Rejected(Stage.HARD, "non-UAE or blocklisted title");
+        }
+        if (!isPublisherAllowed(incoming)) {
+            return new Outcome.Rejected(Stage.HARD,
+                    "publisher not in allowlist: " + incoming.publisher() + " / " + incoming.applyUrl());
         }
 
         // ── 2. Normalise ──────────────────────────────────────────
