@@ -166,9 +166,12 @@ public class JobIngestPipeline {
         // Override remote_uae only if the workMode classifier disagrees.
         job.setRemoteUae("remote".equals(job.getWorkMode()) || incoming.remoteUae());
         job.setImmediateJoiner(false);
-        // Company logo — resolved from apply URL with Clearbit fallback; 404s handled by the frontend.
-        job.setCompanyDomain(logoResolver.domain(incoming.applyUrl(), null));
-        job.setCompanyLogoUrl(logoResolver.resolve(incoming.applyUrl(), null));
+        // Company logo — pass the company name so the resolver can fall back
+        // to a domain guess when applyUrl points at an aggregator/ATS that
+        // we skip (Indeed, Bayt, Workday, etc.). Otherwise these jobs would
+        // get NULL logos.
+        job.setCompanyDomain(logoResolver.domain(incoming.applyUrl(), null, incoming.companyName()));
+        job.setCompanyLogoUrl(logoResolver.resolve(incoming.applyUrl(), null, incoming.companyName()));
         // Job category — re-use the existing classifier on the normalized title for stability.
         String category = JobCategoryClassifier.classify(job.getNormalizedTitle(), incoming.description());
         job.setJobCategory(category == null ? JobCategoryClassifier.OTHER : category);
