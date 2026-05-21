@@ -13,9 +13,11 @@ import java.util.Set;
  *  1. Extract the TLD+1 root domain from the apply URL (preferred) or LinkedIn URL.
  *  2. Skip well-known ATS / job-platform domains — their logos are useless as
  *     company identity (e.g. lever.co, greenhouse.io, linkedin.com).
- *  3. Return a Clearbit Logo API URL: {@code https://logo.clearbit.com/{domain}}.
- *     Clearbit returns the company logo if it knows the domain, or HTTP 404 — the
- *     frontend handles the fallback to initials without any server-side HTTP call.
+ *  3. Return a Google favicon URL: {@code https://www.google.com/s2/favicons?sz=128&domain={domain}}.
+ *     Google returns a 128×128 favicon from the company's own site if it can find
+ *     one, otherwise a generic globe icon. Clearbit's Logo API was discontinued so
+ *     Google's service is the simplest no-auth replacement; swap to logo.dev /
+ *     Brandfetch later if higher-quality logos are needed.
  *
  * Returning a non-null value means "try this URL; show initials if it 404s" — we
  * intentionally avoid a synchronous HTTP round-trip per job at ingest time.
@@ -86,7 +88,7 @@ public class CompanyLogoResolver {
      */
     public String resolve(String applyUrl, String linkedinUrl, String companyName) {
         String domain = bestDomain(applyUrl, linkedinUrl, companyName);
-        return domain == null ? null : "https://logo.clearbit.com/" + domain;
+        return domain == null ? null : "https://www.google.com/s2/favicons?sz=128&domain=" + domain;
     }
 
     /** Domain string suitable for storage in {@code jobs.company_domain}. */
