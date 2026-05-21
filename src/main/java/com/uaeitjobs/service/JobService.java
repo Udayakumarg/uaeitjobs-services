@@ -10,6 +10,8 @@ import com.uaeitjobs.mapper.JobMapper;
 import com.uaeitjobs.repository.JobRepository;
 import com.uaeitjobs.repository.UserRepository;
 import com.uaeitjobs.service.ingest.pipeline.CompanyLogoResolver;
+import com.uaeitjobs.service.ingest.pipeline.description.DescriptionFormatterRegistry;
+import com.uaeitjobs.service.ingest.pipeline.description.JobDescriptionFormatter;
 import com.uaeitjobs.util.JobCategoryClassifier;
 import com.uaeitjobs.util.SlugGenerator;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +34,7 @@ public class JobService {
     private final JobMapper jobMapper;
     private final CompanyLogoResolver logoResolver;
     private final SubscriptionService subscriptionService;
+    private final DescriptionFormatterRegistry formatterRegistry;
 
     public Page<JobDTO.JobResponse> list(Pageable pageable) {
         return jobRepository.findByActiveTrue(pageable).map(jobMapper::toResponse);
@@ -94,6 +97,12 @@ public class JobService {
         job.setPostedBy(user);
         job.setSource(source);
         job.setLastSeenAt(OffsetDateTime.now());
+        // Generate structured HTML for the description so the UI can render
+        // proper headings/paragraphs/bullets instead of a flat text blob.
+        // Combines description + requirements so both render together.
+        JobDescriptionFormatter formatter = formatterRegistry.forVendor(source);
+        String combinedRaw = combineForFormatting(request.description(), request.requirements());
+        job.setDescriptionHtml(formatter.toHtml(combinedRaw));
         Job saved = jobRepository.save(job);
         subscriptionService.incrementPosted(user);
         return jobMapper.toResponse(saved);
@@ -177,6 +186,23 @@ public class JobService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    /**
+     * Merge description + requirements into a single block so the formatter
+     * produces one cohesive HTML output covering both sections. Either side
+     * may be null/blank without losing the other.
+     */
+    private String combineForFormatting(String description, String requirements) {
+        StringBuilder sb = new StringBuilder();
+        if (description != null && !description.isBlank()) {
+            sb.append(description.trim());
+        }
+        if (requirements != null && !requirements.isBlank()) {
+            if (sb.length() > 0) sb.append("\n\n");
+            sb.append("Requirements\n").append(requirements.trim());
+        }
+        return sb.toString();
     }
 
     /**
