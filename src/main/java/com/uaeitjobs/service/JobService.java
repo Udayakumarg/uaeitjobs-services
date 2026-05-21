@@ -92,6 +92,7 @@ public class JobService {
         job.setSlug(uniqueSlug(request.title()));
         job.setPostedBy(user);
         job.setSource(source);
+        job.setLastSeenAt(OffsetDateTime.now());
         Job saved = jobRepository.save(job);
         subscriptionService.incrementPosted(user);
         return jobMapper.toResponse(saved);
