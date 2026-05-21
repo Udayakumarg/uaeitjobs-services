@@ -19,6 +19,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -157,6 +158,9 @@ public class JobService {
         } else {
             String inferred = JobCategoryClassifier.classify(request.title(), request.skills());
             job.setJobCategory(inferred != null ? inferred : JobCategoryClassifier.OTHER);
+        }
+        if (job.getLastSeenAt() == null) {
+            job.setLastSeenAt(java.time.OffsetDateTime.now());
         }
         return job;
     }
