@@ -22,11 +22,12 @@ public interface JobRepository extends JpaRepository<Job, Long> {
 
     /**
      * Duplicate-detection helper for LinkedIn imports.
-     * Matches any row whose linkedin_url contains the supplied URL fragment
-     * (e.g. {@code "/jobs/view/4401461297"}) so trailing tracking params on
-     * the input URL don't let the same job be re-imported.
+     * Matches any <em>active</em> row whose linkedin_url contains the supplied
+     * URL fragment (e.g. {@code "/jobs/view/4401461297"}) so trailing tracking
+     * params on the input URL don't let the same job be re-imported. Excludes
+     * soft-deleted rows so HR can re-import a previously deleted job.
      */
-    @Query("SELECT COUNT(j) > 0 FROM Job j WHERE j.linkedinUrl LIKE CONCAT('%', :fragment, '%')")
+    @Query("SELECT COUNT(j) > 0 FROM Job j WHERE j.active = true AND j.linkedinUrl LIKE CONCAT('%', :fragment, '%')")
     boolean existsByLinkedinUrlContaining(@Param("fragment") String fragment);
 
     Optional<Job> findByExternalSourceAndExternalJobId(String externalSource, String externalJobId);
