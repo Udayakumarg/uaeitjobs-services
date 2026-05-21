@@ -49,6 +49,17 @@ public class JSearchSource {
     @Value("${app.ingest.jsearch.pages:1}")
     private int pages;
 
+    /**
+     * Comma-separated list of site domains to constrain the JSearch query
+     * with Google's {@code site:} operator (e.g.
+     * {@code linkedin.com,bayt.com,gulftalent.com,naukrigulf.com,indeed.com}).
+     * Empty disables the constraint and lets JSearch return jobs from any
+     * aggregated publisher. Filtering at request-time saves RapidAPI quota
+     * vs. fetching everything and rejecting in the pipeline.
+     */
+    @Value("${app.ingest.jsearch.site-restrict:}")
+    private String siteRestrict;
+
     public JSearchSource(RestTemplateBuilder builder) {
         this.http = builder
                 .setConnectTimeout(Duration.ofSeconds(10))
@@ -58,6 +69,31 @@ public class JSearchSource {
 
     public boolean isEnabled() {
         return enabled && rapidapiKey != null && !rapidapiKey.isBlank();
+    }
+
+    /**
+     * Wrap the keyword with Google {@code site:} operators so JSearch only
+     * returns hits from the configured publishers. Returns the bare keyword
+     * when {@link #siteRestrict} is blank.
+     *
+     * <p>Example: keyword {@code "QA Engineer UAE"} with site-restrict
+     * {@code "linkedin.com,bayt.com"} becomes
+     * {@code "QA Engineer UAE (site:linkedin.com OR site:bayt.com)"}.
+     */
+    String buildQuery(String keyword) {
+        if (siteRestrict == null || siteRestrict.isBlank()) return keyword;
+        String[] sites = siteRestrict.split(",");
+        StringBuilder ops = new StringBuilder();
+        boolean first = true;
+        for (String s : sites) {
+            String trimmed = s.trim();
+            if (trimmed.isEmpty()) continue;
+            if (!first) ops.append(" OR ");
+            ops.append("site:").append(trimmed);
+            first = false;
+        }
+        if (ops.length() == 0) return keyword;
+        return keyword + " (" + ops + ")";
     }
 
     public List<IngestedJob> search(String keyword) {
@@ -78,7 +114,7 @@ public class JSearchSource {
     private List<IngestedJob> fetchPage(String keyword, int page) {
         String url = UriComponentsBuilder
                 .fromUriString("https://jsearch.p.rapidapi.com/search-v2")
-                .queryParam("query", keyword)
+                .queryParam("query", buildQuery(keyword))
                 .queryParam("page", page)
                 .queryParam("num_pages", 1)
                 .queryParam("country", country)
