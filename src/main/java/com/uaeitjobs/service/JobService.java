@@ -165,8 +165,8 @@ public class JobService {
         job.setImmediateJoiner(Boolean.TRUE.equals(request.immediateJoiner()));
         job.setRemoteUae(Boolean.TRUE.equals(request.remoteUae()));
         job.setApplyUrl(blankToNull(request.applyUrl()));
-        job.setCompanyDomain(logoResolver.domain(request.applyUrl(), request.linkedinUrl()));
-        job.setCompanyLogoUrl(logoResolver.resolve(request.applyUrl(), request.linkedinUrl()));
+        job.setCompanyDomain(logoResolver.domain(request.applyUrl(), request.linkedinUrl(), request.companyName()));
+        job.setCompanyLogoUrl(logoResolver.resolve(request.applyUrl(), request.linkedinUrl(), request.companyName()));
         String requestedCategory = blankToNull(request.jobCategory());
         if (JobCategoryClassifier.isValid(requestedCategory)) {
             job.setJobCategory(requestedCategory);
