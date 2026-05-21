@@ -6,6 +6,7 @@ import com.uaeitjobs.exception.ResourceNotFoundException;
 import com.uaeitjobs.exception.ValidationException;
 import com.uaeitjobs.mapper.ApplicationMapper;
 import com.uaeitjobs.repository.*;
+import com.uaeitjobs.service.ingest.pipeline.description.DescriptionFormatterRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -28,6 +29,7 @@ public class HRService {
     private final JobService jobService;
     private final LinkedInScraperService linkedInScraperService;
     private final ApplicationMapper applicationMapper;
+    private final DescriptionFormatterRegistry formatterRegistry;
 
     @Transactional
     public HRProfileDTO.Response upsertProfile(User user, HRProfileDTO.Request request) {
@@ -74,11 +76,17 @@ public class HRService {
         try {
             LinkedInJobData scraped = linkedInScraperService.scrapeLinkedInJob(linkedInUrl);
             SalaryRange salaryRange = parseSalary(scraped.getSalary());
+            // Run the description through the LLM-backed formatter so the stored
+            // HTML has proper headings, paragraphs, and bullet lists. The registry
+            // resolves the LLM formatter when enabled, otherwise the heuristic.
+            var formatter = formatterRegistry.forVendor("linkedin");
+            String formattedDescription = formatter.toHtml(scraped.getDescription());
+            String formattedRequirements = formatter.toHtml(scraped.getRequirements());
             JobDTO.JobRequest request = new JobDTO.JobRequest(
                     scraped.getTitle(),
                     scraped.getCompanyName(),
-                    scraped.getDescription(),
-                    scraped.getRequirements(),
+                    formattedDescription,
+                    formattedRequirements,
                     salaryRange.min(),
                     salaryRange.max(),
                     "AED",
