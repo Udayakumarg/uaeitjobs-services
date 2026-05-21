@@ -1,0 +1,8 @@
+# Production profile — security hardening overrides
+# Activate with: SPRING_PROFILES_ACTIVE=prod (already set in docker-compose)
+
+springdoc:
+  api-docs:
+    enabled: false   # hide /v3/api-docs in production
+  swagger-ui:
+    enabled: false   # hide /swagger-ui/** in production

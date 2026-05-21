@@ -35,7 +35,7 @@ public class LinkedInScraperService {
             Document doc = Jsoup.connect(linkedInUrl)
                     .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
                     .timeout(10000)
-                    .followRedirects(true)
+                    .followRedirects(false)
                     .get();
 
             LinkedInJobData jobData = scrapeDocument(doc, linkedInUrl);

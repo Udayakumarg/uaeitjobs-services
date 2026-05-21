@@ -2,7 +2,7 @@ package com.uaeitjobs.controller;
 
 import com.uaeitjobs.dto.ApplicationDTO;
 import com.uaeitjobs.dto.JobSeekerProfileDTO;
-import com.uaeitjobs.entity.SavedJob;
+import com.uaeitjobs.dto.SavedJobDTO;
 import com.uaeitjobs.entity.User;
 import com.uaeitjobs.service.CurrentUserService;
 import com.uaeitjobs.service.JobSeekerService;
@@ -55,9 +55,8 @@ public class JobSeekerController {
     }
 
     @GetMapping("/saved-jobs")
-    public List<SavedJob> savedJobs() {
-        User user = currentUserService.get();
-        return jobSeekerService.savedJobs(user);
+    public List<SavedJobDTO.Response> savedJobs() {
+        return jobSeekerService.savedJobs(currentUserService.get());
     }
 
     @PostMapping("/saved-jobs/{jobId}")

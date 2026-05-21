@@ -2,10 +2,12 @@ package com.uaeitjobs.service;
 
 import com.uaeitjobs.dto.ApplicationDTO;
 import com.uaeitjobs.dto.JobSeekerProfileDTO;
+import com.uaeitjobs.dto.SavedJobDTO;
 import com.uaeitjobs.entity.*;
 import com.uaeitjobs.exception.ResourceNotFoundException;
 import com.uaeitjobs.exception.ValidationException;
 import com.uaeitjobs.mapper.ApplicationMapper;
+import com.uaeitjobs.mapper.JobMapper;
 import com.uaeitjobs.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -24,6 +26,7 @@ public class JobSeekerService {
     private final ApplicationRepository applicationRepository;
     private final SavedJobRepository savedJobRepository;
     private final ApplicationMapper applicationMapper;
+    private final JobMapper jobMapper;
     private final FileStorageService fileStorageService;
     private final EmailService emailService;
 
@@ -90,8 +93,10 @@ public class JobSeekerService {
         return applicationRepository.findByUser(user, pageable).map(applicationMapper::toResponse);
     }
 
-    public List<SavedJob> savedJobs(User user) {
-        return savedJobRepository.findByUser(user);
+    public List<SavedJobDTO.Response> savedJobs(User user) {
+        return savedJobRepository.findByUser(user).stream()
+                .map(s -> new SavedJobDTO.Response(s.getId(), jobMapper.toResponse(s.getJob()), s.getSavedAt()))
+                .toList();
     }
 
     @Transactional
