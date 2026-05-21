@@ -15,6 +15,7 @@ import java.util.Optional;
 public interface JobRepository extends JpaRepository<Job, Long> {
     Page<Job> findByActiveTrue(Pageable pageable);
     Page<Job> findByPostedBy(User user, Pageable pageable);
+    Page<Job> findByPostedByAndActiveTrue(User user, Pageable pageable);
     Optional<Job> findByIdAndActiveTrue(Long id);
     boolean existsBySlug(String slug);
     boolean existsByApplyUrl(String applyUrl);

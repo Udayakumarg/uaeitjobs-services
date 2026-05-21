@@ -123,7 +123,10 @@ public class JobService {
     }
 
     public Page<JobDTO.JobResponse> postedBy(User user, Pageable pageable) {
-        return jobRepository.findByPostedBy(user, pageable).map(jobMapper::toResponse);
+        // Soft-deleted jobs (active=false) stay in the DB for audit but are
+        // hidden from the HR's "My Posted Jobs" list — clicking delete should
+        // make a job disappear from the HR's view immediately.
+        return jobRepository.findByPostedByAndActiveTrue(user, pageable).map(jobMapper::toResponse);
     }
 
     public StatsDTO stats() {
