@@ -10,8 +10,7 @@ import com.uaeitjobs.mapper.JobMapper;
 import com.uaeitjobs.repository.JobRepository;
 import com.uaeitjobs.repository.UserRepository;
 import com.uaeitjobs.service.ingest.pipeline.CompanyLogoResolver;
-import com.uaeitjobs.service.ingest.pipeline.description.DescriptionFormatterRegistry;
-import com.uaeitjobs.service.ingest.pipeline.description.JobDescriptionFormatter;
+import com.uaeitjobs.service.ingest.pipeline.description.HeuristicDescriptionFormatter;
 import com.uaeitjobs.util.JobCategoryClassifier;
 import com.uaeitjobs.util.SlugGenerator;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +33,8 @@ public class JobService {
     private final JobMapper jobMapper;
     private final CompanyLogoResolver logoResolver;
     private final SubscriptionService subscriptionService;
-    private final DescriptionFormatterRegistry formatterRegistry;
+    private final HeuristicDescriptionFormatter heuristicFormatter;
+    private final AsyncDescriptionEnhancer asyncDescriptionEnhancer;
 
     public Page<JobDTO.JobResponse> list(Pageable pageable) {
         return jobRepository.findByActiveTrue(pageable).map(jobMapper::toResponse);
@@ -97,13 +97,16 @@ public class JobService {
         job.setPostedBy(user);
         job.setSource(source);
         job.setLastSeenAt(OffsetDateTime.now());
-        // Generate structured HTML for the description so the UI can render
-        // proper headings/paragraphs/bullets instead of a flat text blob.
-        // Combines description + requirements so both render together.
-        JobDescriptionFormatter formatter = formatterRegistry.forVendor(source);
+        // Two-stage formatting:
+        //   1. Heuristic runs synchronously so the API responds in < 50ms
+        //      — the HR user sees the job appear immediately.
+        //   2. The async enhancer re-runs the registered formatter (LLM
+        //      when enabled) and overwrites description_html. Failures
+        //      are swallowed so the heuristic version always sticks.
         String combinedRaw = combineForFormatting(request.description(), request.requirements());
-        job.setDescriptionHtml(formatter.toHtml(combinedRaw));
+        job.setDescriptionHtml(heuristicFormatter.toHtml(combinedRaw));
         Job saved = jobRepository.save(job);
+        asyncDescriptionEnhancer.enhance(saved.getId(), combinedRaw, source);
         subscriptionService.incrementPosted(user);
         return jobMapper.toResponse(saved);
     }
