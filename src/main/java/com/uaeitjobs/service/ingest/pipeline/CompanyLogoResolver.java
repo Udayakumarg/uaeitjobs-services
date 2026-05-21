@@ -1,5 +1,6 @@
 package com.uaeitjobs.service.ingest.pipeline;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
@@ -24,6 +25,18 @@ import java.util.Set;
  */
 @Component
 public class CompanyLogoResolver {
+
+    /**
+     * Optional Logo.dev publishable key. When set, the resolver returns
+     * {@code https://img.logo.dev/{domain}?token=...&size=200&format=png}
+     * which is a real company logo (Emirates wordmark, etc.) rather than
+     * Google's small generic favicon. Get one free (5000 req/mo) at
+     * https://www.logo.dev — paste the {@code pk_...} token into the
+     * {@code LOGO_DEV_KEY} env var. Falls back silently to the Google
+     * favicon when blank, so the app keeps working without an account.
+     */
+    @Value("${app.logo.dev-key:}")
+    private String logoDevKey;
 
     /** ATS platforms and generic job aggregators whose domain ≠ the hiring company. */
     private static final Set<String> SKIP_DOMAINS = Set.of(
@@ -88,7 +101,15 @@ public class CompanyLogoResolver {
      */
     public String resolve(String applyUrl, String linkedinUrl, String companyName) {
         String domain = bestDomain(applyUrl, linkedinUrl, companyName);
-        return domain == null ? null : "https://www.google.com/s2/favicons?sz=128&domain=" + domain;
+        if (domain == null) return null;
+        // Prefer Logo.dev (real company logos) when an API key is configured;
+        // fall back to Google's favicon endpoint (no auth needed).
+        if (logoDevKey != null && !logoDevKey.isBlank()) {
+            return "https://img.logo.dev/" + domain
+                    + "?token=" + logoDevKey
+                    + "&size=200&format=png&fallback=monogram";
+        }
+        return "https://www.google.com/s2/favicons?sz=128&domain=" + domain;
     }
 
     /** Domain string suitable for storage in {@code jobs.company_domain}. */
