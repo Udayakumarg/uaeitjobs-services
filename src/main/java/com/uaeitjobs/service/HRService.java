@@ -28,6 +28,7 @@ public class HRService {
     private final JobService jobService;
     private final LinkedInScraperService linkedInScraperService;
     private final ApplicationMapper applicationMapper;
+    private final JobRepository jobRepository;
 
     @Transactional
     public HRProfileDTO.Response upsertProfile(User user, HRProfileDTO.Request request) {
@@ -65,8 +66,21 @@ public class HRService {
         return applicationMapper.toResponse(application);
     }
 
+    /** Matches LinkedIn job IDs in URLs like {@code .../jobs/view/4401461297}. */
+    private static final Pattern LINKEDIN_JOB_ID = Pattern.compile("/jobs/view/(\\d+)");
+
     @Transactional
     public JobDTO.JobResponse importLinkedIn(User user, String linkedInUrl) {
+        // Reject duplicates before paying for the scrape. We match on the
+        // canonical /jobs/view/{id} segment so trailing tracking params
+        // ("?refId=...") don't bypass the check.
+        Matcher idMatcher = LINKEDIN_JOB_ID.matcher(linkedInUrl == null ? "" : linkedInUrl);
+        if (idMatcher.find()) {
+            String fragment = "/jobs/view/" + idMatcher.group(1);
+            if (jobRepository.existsByLinkedinUrlContaining(fragment)) {
+                throw new ValidationException("This LinkedIn job has already been imported");
+            }
+        }
         LinkedInImport importRecord = new LinkedInImport();
         importRecord.setUser(user);
         importRecord.setLinkedinJobUrl(linkedInUrl);
