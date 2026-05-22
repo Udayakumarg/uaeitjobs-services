@@ -98,6 +98,17 @@ public class AuthController {
         authService.verifyEmail(request.token());
     }
 
+    // ── Token resolution ─────────────────────────────────────────────────────
+
+    /**
+     * Prefers the httpOnly cookie token; falls back to the request body for
+     * clients that still hold a pre-cookie-era token (one-time migration path).
+     */
+    private static String resolveToken(String cookieToken, AuthDTO.RefreshRequest body) {
+        if (cookieToken != null && !cookieToken.isBlank()) return cookieToken;
+        return body != null ? body.refreshToken() : null;
+    }
+
     // ── Cookie helpers ────────────────────────────────────────────────────────
 
     private void setRefreshCookie(HttpServletResponse response, String token) {
