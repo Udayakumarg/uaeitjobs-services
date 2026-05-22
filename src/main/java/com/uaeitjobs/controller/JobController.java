@@ -46,16 +46,30 @@ public class JobController {
         return jobService.search(q, PageUtil.page(page, size));
     }
 
+    /**
+     * Multi-select filter endpoint. Each dimension (emirate, category, etc.)
+     * accepts one or more values — Spring MVC collects repeated params into a
+     * List automatically (e.g. {@code ?emirate=dubai&emirate=abu_dhabi}).
+     * All filtering is performed in-database so no results are silently hidden
+     * by the page-size cap.
+     */
     @GetMapping("/jobs/filter")
-    public Page<JobDTO.JobResponse> filter(@RequestParam(required = false) String type, @RequestParam(required = false) String level,
-                                           @RequestParam(required = false) String location, @RequestParam(required = false) String skills,
-                                           @RequestParam(required = false) String visaType,
-                                           @RequestParam(required = false) String emirate,
-                                           @RequestParam(required = false) Boolean immediateJoiner,
-                                           @RequestParam(required = false) Boolean remoteUae,
-                                           @RequestParam(required = false) String category,
-                                           @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
-        return jobService.filter(type, level, location, skills, visaType, emirate, immediateJoiner, remoteUae, category, PageUtil.page(page, size));
+    public Page<JobDTO.JobResponse> filter(
+            @RequestParam(required = false) java.util.List<String> emirate,
+            @RequestParam(required = false) java.util.List<String> category,
+            @RequestParam(required = false) java.util.List<String> experienceLevel,
+            @RequestParam(required = false) java.util.List<String> jobType,
+            @RequestParam(required = false) Boolean immediateJoiner,
+            @RequestParam(required = false) Boolean remoteUae,
+            @RequestParam(required = false) String postedAfter,
+            @RequestParam(required = false) Integer salaryMin,
+            @RequestParam(required = false) Integer salaryMax,
+            @RequestParam(required = false) String sort,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "80") int size) {
+        return jobService.filterMulti(emirate, category, experienceLevel, jobType,
+                remoteUae, immediateJoiner, postedAfter, salaryMin, salaryMax, sort,
+                PageUtil.page(page, size));
     }
 
     @PostMapping("/jobs")

@@ -60,7 +60,7 @@ public interface JobRepository extends JpaRepository<Job, Long> {
           and (cast(:type as varchar) is null or j.job_type = :type)
           and (cast(:level as varchar) is null or j.experience_level = :level)
           and (cast(:location as varchar) is null or lower(j.location_uae) like lower(concat('%', :location, '%')))
-          and (cast(:skill as varchar) is null or j.skills::text ilike concat('%', :skill, '%'))
+          and (cast(:skill as varchar) is null or j.skills @> jsonb_build_array(cast(:skill as varchar)))
           and (cast(:visaType as varchar) is null or j.visa_type = :visaType)
           and (cast(:emirate as varchar) is null or j.emirate = :emirate)
           and (cast(:immediateJoiner as boolean) is null or j.immediate_joiner = :immediateJoiner)
@@ -74,7 +74,7 @@ public interface JobRepository extends JpaRepository<Job, Long> {
           and (cast(:type as varchar) is null or j.job_type = :type)
           and (cast(:level as varchar) is null or j.experience_level = :level)
           and (cast(:location as varchar) is null or lower(j.location_uae) like lower(concat('%', :location, '%')))
-          and (cast(:skill as varchar) is null or j.skills::text ilike concat('%', :skill, '%'))
+          and (cast(:skill as varchar) is null or j.skills @> jsonb_build_array(cast(:skill as varchar)))
           and (cast(:visaType as varchar) is null or j.visa_type = :visaType)
           and (cast(:emirate as varchar) is null or j.emirate = :emirate)
           and (cast(:immediateJoiner as boolean) is null or j.immediate_joiner = :immediateJoiner)
@@ -114,4 +114,62 @@ public interface JobRepository extends JpaRepository<Job, Long> {
     long countByActiveTrue();
     @Query("select count(distinct j.companyName) from Job j where j.active = true")
     long countActiveCompanies();
+
+    /**
+     * Full multi-select filter query. Accepts comma-joined strings for each
+     * multi-select dimension (empty string = no filter). Supports postedAfter
+     * (ISO-8601 timestamp or empty string), salary range, and sort direction.
+     *
+     * Uses {@code = any(string_to_array(...))} so the GIN index on emirate,
+     * job_category, experience_level, and job_type columns is honoured for
+     * IN-style matching without client-side post-filtering.
+     */
+    @Query(value = """
+        select * from jobs j
+        where j.is_active = true
+          and (:emirate  = '' or j.emirate          = any(string_to_array(:emirate,  ',')))
+          and (:category = '' or j.job_category     = any(string_to_array(:category, ',')))
+          and (:levels   = '' or j.experience_level = any(string_to_array(:levels,   ',')))
+          and (:jobTypes = '' or j.job_type         = any(string_to_array(:jobTypes, ',')))
+          and (cast(:remoteUae       as boolean) is null or j.remote_uae       = :remoteUae)
+          and (cast(:immediateJoiner as boolean) is null or j.immediate_joiner = :immediateJoiner)
+          and (:postedAfter = '' or j.created_at >= cast(:postedAfter as timestamptz))
+          and (cast(:salaryMin as numeric) is null
+               or coalesce(j.salary_min, j.salary_max) >= cast(:salaryMin as numeric))
+          and (cast(:salaryMax as numeric) is null
+               or coalesce(j.salary_min, j.salary_max) <= cast(:salaryMax as numeric))
+        order by
+          case when :sortBy = 'salary_desc'
+               then coalesce(j.salary_max, j.salary_min) end desc nulls last,
+          case when :sortBy = 'salary_asc'
+               then coalesce(j.salary_min, j.salary_max) end asc  nulls last,
+          j.created_at desc
+        """,
+        countQuery = """
+        select count(*) from jobs j
+        where j.is_active = true
+          and (:emirate  = '' or j.emirate          = any(string_to_array(:emirate,  ',')))
+          and (:category = '' or j.job_category     = any(string_to_array(:category, ',')))
+          and (:levels   = '' or j.experience_level = any(string_to_array(:levels,   ',')))
+          and (:jobTypes = '' or j.job_type         = any(string_to_array(:jobTypes, ',')))
+          and (cast(:remoteUae       as boolean) is null or j.remote_uae       = :remoteUae)
+          and (cast(:immediateJoiner as boolean) is null or j.immediate_joiner = :immediateJoiner)
+          and (:postedAfter = '' or j.created_at >= cast(:postedAfter as timestamptz))
+          and (cast(:salaryMin as numeric) is null
+               or coalesce(j.salary_min, j.salary_max) >= cast(:salaryMin as numeric))
+          and (cast(:salaryMax as numeric) is null
+               or coalesce(j.salary_min, j.salary_max) <= cast(:salaryMax as numeric))
+        """,
+        nativeQuery = true)
+    Page<Job> filterMulti(@Param("emirate")        String emirate,
+                          @Param("category")       String category,
+                          @Param("levels")         String levels,
+                          @Param("jobTypes")       String jobTypes,
+                          @Param("remoteUae")      Boolean remoteUae,
+                          @Param("immediateJoiner") Boolean immediateJoiner,
+                          @Param("postedAfter")    String postedAfter,
+                          @Param("salaryMin")      Integer salaryMin,
+                          @Param("salaryMax")      Integer salaryMax,
+                          @Param("sortBy")         String sortBy,
+                          Pageable pageable);
 }

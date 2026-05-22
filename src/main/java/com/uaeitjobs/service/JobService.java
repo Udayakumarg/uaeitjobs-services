@@ -72,6 +72,47 @@ public class JobService {
                 unsorted).map(jobMapper::toResponse);
     }
 
+    /**
+     * Multi-select filter — all dimensions accept a List of values. Empty or
+     * null lists mean "no filter". Results are fully filtered on the DB side
+     * so the 80-result page cap never silently hides matching jobs.
+     */
+    public Page<JobDTO.JobResponse> filterMulti(java.util.List<String> emirate,
+                                                java.util.List<String> category,
+                                                java.util.List<String> levels,
+                                                java.util.List<String> jobTypes,
+                                                Boolean remoteUae,
+                                                Boolean immediateJoiner,
+                                                String postedAfter,
+                                                Integer salaryMin,
+                                                Integer salaryMax,
+                                                String sortBy,
+                                                Pageable pageable) {
+        Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+        return jobRepository.filterMulti(
+                joinOrEmpty(emirate),
+                joinOrEmpty(category),
+                joinOrEmpty(levels),
+                joinOrEmpty(jobTypes),
+                Boolean.TRUE.equals(remoteUae)       ? Boolean.TRUE : null,
+                Boolean.TRUE.equals(immediateJoiner) ? Boolean.TRUE : null,
+                blankToEmpty(postedAfter),
+                salaryMin,
+                salaryMax,
+                blankToNull(sortBy) == null ? "newest" : sortBy,
+                unsorted
+        ).map(jobMapper::toResponse);
+    }
+
+    private static String joinOrEmpty(java.util.List<String> list) {
+        if (list == null || list.isEmpty()) return "";
+        return String.join(",", list);
+    }
+
+    private static String blankToEmpty(String value) {
+        return value == null || value.isBlank() ? "" : value.trim();
+    }
+
     public Page<JobDTO.JobResponse> search(String query, Pageable pageable) {
         if (query == null || query.isBlank()) {
             return list(pageable);
