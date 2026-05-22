@@ -18,6 +18,16 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 10MB
+  data:
+    redis:
+      # REDIS_URL is injected by docker-compose.  Falls back to localhost in dev.
+      # Lettuce (the default client) connects lazily — the app starts normally
+      # even if Redis is unreachable; the rate-limiter falls back to Caffeine.
+      url: ${REDIS_URL:redis://localhost:6379}
+  cache:
+    # Caffeine is on the classpath; CacheConfig wires it explicitly.
+    # This entry documents the intent for readers — auto-config is bypassed.
+    type: none
 
 server:
   port: ${SERVER_PORT:${PORT:8080}}
@@ -103,17 +113,6 @@ app:
     refresh-token-days: ${JWT_REFRESH_DAYS:7}
   email:
     verification-base-url: ${EMAIL_VERIFICATION_URL:http://localhost:3000/verify-email}
-
-  data:
-    redis:
-      # REDIS_URL is injected by docker-compose.  Falls back to localhost in dev.
-      # Lettuce (the default client) connects lazily — the app starts normally
-      # even if Redis is unreachable; the rate-limiter falls back to Caffeine.
-      url: ${REDIS_URL:redis://localhost:6379}
-  cache:
-    # Caffeine is on the classpath; CacheConfig wires it explicitly.
-    # This entry documents the intent for readers — auto-config is bypassed.
-    type: none
 
 sendgrid:
   api-key: ${SENDGRID_API_KEY:}
