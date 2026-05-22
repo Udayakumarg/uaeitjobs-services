@@ -100,6 +100,13 @@ app:
   email:
     verification-base-url: ${EMAIL_VERIFICATION_URL:http://localhost:3000/verify-email}
 
+  data:
+    redis:
+      # REDIS_URL is injected by docker-compose.  Falls back to localhost in dev.
+      # Lettuce (the default client) connects lazily — the app starts normally
+      # even if Redis is unreachable; the rate-limiter falls back to Caffeine.
+      url: ${REDIS_URL:redis://localhost:6379}
+
 sendgrid:
   api-key: ${SENDGRID_API_KEY:}
   from-email: ${SENDGRID_FROM_EMAIL:noreply@uaeitjobs.com}

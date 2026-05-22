@@ -65,5 +65,18 @@ public final class JobDTO {
             String descriptionHtml,
             String companyLogoUrl
     ) {
+        /**
+         * Returns a copy of this response with {@code applyUrl} and
+         * {@code linkedinUrl} set to {@code null}.  Used to gate recruiter
+         * contact links for anonymous (unauthenticated) callers so that
+         * direct-apply URLs are only visible to registered users.
+         */
+        public JobResponse withMaskedApply() {
+            return new JobResponse(id, slug, title, companyName, description, requirements,
+                    salaryMin, salaryMax, salaryCurrency, jobType, experienceLevel, locationUae,
+                    skills, null /* linkedinUrl */, source, createdAt, updatedAt, expiresAt,
+                    featured, active, viewCount, visaType, emirate, immediateJoiner, remoteUae,
+                    jobCategory, null /* applyUrl */, descriptionSections, descriptionHtml, companyLogoUrl);
+        }
     }
 }

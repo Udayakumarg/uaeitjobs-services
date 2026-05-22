@@ -124,6 +124,14 @@ public interface JobRepository extends JpaRepository<Job, Long> {
      * job_category, experience_level, and job_type columns is honoured for
      * IN-style matching without client-side post-filtering.
      */
+    /**
+     * Full multi-select + full-text-search filter query.
+     * <p>
+     * {@code q} drives a {@code plainto_tsquery} full-text match when non-empty;
+     * when empty the clause is a no-op.  When {@code q} is provided, results are
+     * primarily ranked by {@code ts_rank} (relevance) and salary/date ordering
+     * becomes a secondary tiebreaker via {@code NULLS LAST}.
+     */
     @Query(value = """
         select * from jobs j
         where j.is_active = true
@@ -138,7 +146,19 @@ public interface JobRepository extends JpaRepository<Job, Long> {
                or coalesce(j.salary_min, j.salary_max) >= cast(:salaryMin as numeric))
           and (cast(:salaryMax as numeric) is null
                or coalesce(j.salary_min, j.salary_max) <= cast(:salaryMax as numeric))
+          and (:q = '' or to_tsvector('english',
+               coalesce(j.title,'') || ' ' ||
+               coalesce(j.description,'') || ' ' ||
+               coalesce(j.requirements,''))
+               @@ plainto_tsquery('english', :q))
         order by
+          case when :q != ''
+               then ts_rank(to_tsvector('english',
+                    coalesce(j.title,'') || ' ' ||
+                    coalesce(j.description,'') || ' ' ||
+                    coalesce(j.requirements,'')),
+                    plainto_tsquery('english', :q))
+          end desc nulls last,
           case when :sortBy = 'salary_desc'
                then coalesce(j.salary_max, j.salary_min) end desc nulls last,
           case when :sortBy = 'salary_asc'
@@ -159,6 +179,11 @@ public interface JobRepository extends JpaRepository<Job, Long> {
                or coalesce(j.salary_min, j.salary_max) >= cast(:salaryMin as numeric))
           and (cast(:salaryMax as numeric) is null
                or coalesce(j.salary_min, j.salary_max) <= cast(:salaryMax as numeric))
+          and (:q = '' or to_tsvector('english',
+               coalesce(j.title,'') || ' ' ||
+               coalesce(j.description,'') || ' ' ||
+               coalesce(j.requirements,''))
+               @@ plainto_tsquery('english', :q))
         """,
         nativeQuery = true)
     Page<Job> filterMulti(@Param("emirate")        String emirate,
@@ -171,5 +196,6 @@ public interface JobRepository extends JpaRepository<Job, Long> {
                           @Param("salaryMin")      Integer salaryMin,
                           @Param("salaryMax")      Integer salaryMax,
                           @Param("sortBy")         String sortBy,
+                          @Param("q")              String q,
                           Pageable pageable);
 }

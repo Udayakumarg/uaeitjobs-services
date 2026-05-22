@@ -53,6 +53,11 @@ public class JobController {
      * All filtering is performed in-database so no results are silently hidden
      * by the page-size cap.
      */
+    /**
+     * Unified search + multi-select filter.  All parameters are optional.
+     * {@code q} drives a full-text search (plainto_tsquery) that is ANDed with
+     * all active facet filters in a single DB query — no client-side post-filtering.
+     */
     @GetMapping("/jobs/filter")
     public Page<JobDTO.JobResponse> filter(
             @RequestParam(required = false) java.util.List<String> emirate,
@@ -65,10 +70,11 @@ public class JobController {
             @RequestParam(required = false) Integer salaryMin,
             @RequestParam(required = false) Integer salaryMax,
             @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "80") int size) {
         return jobService.filterMulti(emirate, category, experienceLevel, jobType,
-                remoteUae, immediateJoiner, postedAfter, salaryMin, salaryMax, sort,
+                remoteUae, immediateJoiner, postedAfter, salaryMin, salaryMax, sort, q,
                 PageUtil.page(page, size));
     }
 

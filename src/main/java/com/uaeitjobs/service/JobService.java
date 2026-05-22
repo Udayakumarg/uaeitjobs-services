@@ -17,6 +17,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,7 +39,9 @@ public class JobService {
     private final AsyncDescriptionEnhancer asyncDescriptionEnhancer;
 
     public Page<JobDTO.JobResponse> list(Pageable pageable) {
-        return jobRepository.findByActiveTrue(pageable).map(jobMapper::toResponse);
+        boolean authed = isAuthenticated();
+        return jobRepository.findByActiveTrue(pageable)
+                .map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
     }
 
     @Transactional
@@ -45,7 +49,8 @@ public class JobService {
         Job job = jobRepository.findByIdAndActiveTrue(id).orElseThrow(() -> new ResourceNotFoundException("Job not found"));
         jobRepository.incrementViewCount(id);
         job.setViewCount(job.getViewCount() + 1);
-        return jobMapper.toResponse(job);
+        JobDTO.JobResponse resp = jobMapper.toResponse(job);
+        return isAuthenticated() ? resp : resp.withMaskedApply();
     }
 
     public Page<JobDTO.JobResponse> filter(String type, String level, String location, String skill, Pageable pageable) {
@@ -58,6 +63,7 @@ public class JobService {
         // Strip the JPA-style Sort — the native filter query owns its own
         // ORDER BY, and Spring would otherwise append `order by createdAt`
         // (camelCase property) which fails against the snake_case column.
+        boolean  authed   = isAuthenticated();
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         return jobRepository.filter(
                 blankToNull(type),
@@ -69,13 +75,15 @@ public class JobService {
                 Boolean.TRUE.equals(immediateJoiner) ? Boolean.TRUE : null,
                 Boolean.TRUE.equals(remoteUae) ? Boolean.TRUE : null,
                 blankToNull(category),
-                unsorted).map(jobMapper::toResponse);
+                unsorted).map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
     }
 
     /**
      * Multi-select filter — all dimensions accept a List of values. Empty or
-     * null lists mean "no filter". Results are fully filtered on the DB side
-     * so the 80-result page cap never silently hides matching jobs.
+     * null lists mean "no filter". When {@code q} is non-blank the results are
+     * also filtered and ranked by full-text relevance, so search + facets run
+     * in a single DB round-trip. Results are fully filtered on the DB side so
+     * the 80-result page cap never silently hides matching jobs.
      */
     public Page<JobDTO.JobResponse> filterMulti(java.util.List<String> emirate,
                                                 java.util.List<String> category,
@@ -87,8 +95,10 @@ public class JobService {
                                                 Integer salaryMin,
                                                 Integer salaryMax,
                                                 String sortBy,
+                                                String q,
                                                 Pageable pageable) {
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+        boolean  authed   = isAuthenticated();
         return jobRepository.filterMulti(
                 joinOrEmpty(emirate),
                 joinOrEmpty(category),
@@ -100,8 +110,9 @@ public class JobService {
                 salaryMin,
                 salaryMax,
                 blankToNull(sortBy) == null ? "newest" : sortBy,
+                blankToEmpty(q),
                 unsorted
-        ).map(jobMapper::toResponse);
+        ).map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
     }
 
     private static String joinOrEmpty(java.util.List<String> list) {
@@ -118,8 +129,10 @@ public class JobService {
             return list(pageable);
         }
         // Search native query has its own ORDER BY (ts_rank) — strip Sort.
+        boolean  authed   = isAuthenticated();
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
-        return jobRepository.search(query, unsorted).map(jobMapper::toResponse);
+        return jobRepository.search(query, unsorted)
+                .map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
     }
 
     @Transactional
@@ -233,6 +246,19 @@ public class JobService {
 
     private String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
+    }
+
+    /**
+     * Returns {@code true} when the current request is made by a fully
+     * authenticated user (i.e. not the anonymous principal that Spring Security
+     * assigns to unauthenticated requests).  Used to decide whether to mask
+     * sensitive recruiter fields (applyUrl, linkedinUrl) in public API responses.
+     */
+    private static boolean isAuthenticated() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null
+                && auth.isAuthenticated()
+                && !(auth instanceof AnonymousAuthenticationToken);
     }
 
     /**
