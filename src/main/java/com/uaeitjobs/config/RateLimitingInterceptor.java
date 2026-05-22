@@ -76,6 +76,12 @@ public class RateLimitingInterceptor implements HandlerInterceptor {
 
     // ── HandlerInterceptor ────────────────────────────────────────────────────
 
+    // ── HandlerInterceptor ────────────────────────────────────────────────────
+    //
+    // WebConfig registers this interceptor only on auth + public-read paths, so
+    // preHandle is never called for unmetered endpoints (actuator, swagger, etc.).
+    // The only distinction needed here is auth (5 req/min) vs public (60 req/min).
+
     @Override
     public boolean preHandle(HttpServletRequest request,
                              HttpServletResponse response,
@@ -83,13 +89,9 @@ public class RateLimitingInterceptor implements HandlerInterceptor {
 
         String  uri    = request.getRequestURI();
         boolean isAuth = isAuthEndpoint(uri);
-        boolean isPub  = !isAuth && isPublicEndpoint(uri);
-
-        if (!isAuth && !isPub) return true;   // unmetered endpoint
-
-        String  ip    = clientIp(request);
-        int     limit = isAuth ? 5 : 60;
-        String  key   = (isAuth ? "rl:auth:" : "rl:pub:") + ip;
+        String  ip     = clientIp(request);
+        int     limit  = isAuth ? 5 : 60;
+        String  key    = (isAuth ? "rl:auth:" : "rl:pub:") + ip;
 
         if (isAllowed(key, limit)) return true;
 
@@ -112,11 +114,10 @@ public class RateLimitingInterceptor implements HandlerInterceptor {
                         "60");
                 return Long.valueOf(1L).equals(result);
             } catch (Exception ex) {
-                // Redis unreachable — fall through to Caffeine fallback.
+                // Redis unreachable — fall through to per-process Caffeine fallback.
                 log.debug("Redis rate-limit unavailable, using Caffeine fallback: {}", ex.getMessage());
             }
         }
-        // Caffeine fallback (per-process, not globally shared)
         Bandwidth bw     = limit <= 5 ? AUTH_BANDWIDTH : PUBLIC_BANDWIDTH;
         Bucket    bucket = buckets.get(key, k -> Bucket4j.builder().addLimit(bw).build());
         return bucket.tryConsume(1);
@@ -126,13 +127,6 @@ public class RateLimitingInterceptor implements HandlerInterceptor {
         return uri.equals("/api/v1/auth/login")
                 || uri.equals("/api/v1/auth/register")
                 || uri.equals("/api/v1/auth/refresh");
-    }
-
-    private static boolean isPublicEndpoint(String uri) {
-        return uri.startsWith("/api/v1/jobs")
-                || uri.startsWith("/api/v1/skills")
-                || uri.equals("/api/v1/stats")
-                || uri.equals("/api/v1/locations");
     }
 
     private static String clientIp(HttpServletRequest request) {

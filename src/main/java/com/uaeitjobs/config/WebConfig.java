@@ -12,6 +12,15 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(rateLimitingInterceptor);
+        // Only meter the paths that are actually rate-limited.
+        // This avoids running preHandle on every static-asset and actuator call.
+        registry.addInterceptor(rateLimitingInterceptor)
+                .addPathPatterns(
+                        "/api/v1/auth/**",
+                        "/api/v1/jobs/**",
+                        "/api/v1/skills/**",
+                        "/api/v1/stats",
+                        "/api/v1/locations"
+                );
     }
 }

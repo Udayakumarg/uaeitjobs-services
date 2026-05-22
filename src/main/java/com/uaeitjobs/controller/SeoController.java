@@ -1,8 +1,11 @@
 package com.uaeitjobs.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.uaeitjobs.entity.Job;
 import com.uaeitjobs.repository.JobRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -24,6 +27,7 @@ import java.util.concurrent.TimeUnit;
  * /sitemap.xml and /robots.txt URLs to these handlers so search engines
  * see them at the root.
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/seo")
 @RequiredArgsConstructor
@@ -33,6 +37,7 @@ public class SeoController {
     private static final DateTimeFormatter ISO_DATE = DateTimeFormatter.ISO_LOCAL_DATE;
 
     private final JobRepository jobRepository;
+    private final ObjectMapper objectMapper;
 
     @Value("${app.public-url:https://www.uaeitjobs.com}")
     private String publicUrl;
@@ -156,31 +161,52 @@ public class SeoController {
         return esc(snippet);
     }
 
+    /**
+     * Builds a Schema.org {@code JobPosting} JSON-LD snippet.
+     * <p>
+     * Jackson handles all string escaping, including the {@code </script>}
+     * sequence that would otherwise break an inline {@code <script>} tag.
+     * Jackson's default string serializer escapes {@code <}, {@code >}, and
+     * {@code &} so the output is safe to embed directly in HTML.
+     */
     private String buildJsonLd(Job job, String url) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("{\"@context\":\"https://schema.org/\",\"@type\":\"JobPosting\"");
-        sb.append(",\"title\":\"").append(jsonEsc(job.getTitle())).append("\"");
-        sb.append(",\"datePosted\":\"").append(job.getCreatedAt() != null ? job.getCreatedAt().toLocalDate() : "").append("\"");
-        sb.append(",\"hiringOrganization\":{\"@type\":\"Organization\",\"name\":\"").append(jsonEsc(job.getCompanyName())).append("\"}");
-        sb.append(",\"jobLocation\":{\"@type\":\"Place\",\"address\":{\"@type\":\"PostalAddress\",\"addressCountry\":\"AE\"");
-        if (job.getLocationUae() != null) sb.append(",\"addressLocality\":\"").append(jsonEsc(job.getLocationUae())).append("\"");
-        sb.append("}}");
-        sb.append(",\"directApply\":true");
-        sb.append(",\"url\":\"").append(url).append("\"");
-        sb.append("}");
-        return sb.toString();
+        try {
+            ObjectNode root = objectMapper.createObjectNode();
+            root.put("@context", "https://schema.org/");
+            root.put("@type", "JobPosting");
+            root.put("title", job.getTitle() != null ? job.getTitle() : "");
+            root.put("datePosted", job.getCreatedAt() != null ? job.getCreatedAt().toLocalDate().toString() : "");
+
+            ObjectNode org = objectMapper.createObjectNode();
+            org.put("@type", "Organization");
+            org.put("name", job.getCompanyName() != null ? job.getCompanyName() : "");
+            root.set("hiringOrganization", org);
+
+            ObjectNode address = objectMapper.createObjectNode();
+            address.put("@type", "PostalAddress");
+            address.put("addressCountry", "AE");
+            if (job.getLocationUae() != null) {
+                address.put("addressLocality", job.getLocationUae());
+            }
+            ObjectNode location = objectMapper.createObjectNode();
+            location.put("@type", "Place");
+            location.set("address", address);
+            root.set("jobLocation", location);
+
+            root.put("directApply", true);
+            root.put("url", url);
+
+            return objectMapper.writeValueAsString(root);
+        } catch (Exception e) {
+            log.warn("Failed to serialize JSON-LD for job id={}", job.getId(), e);
+            return "{}";
+        }
     }
 
     /** HTML-escape for attribute values. */
     private static String esc(String s) {
         if (s == null) return "";
         return s.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;");
-    }
-
-    /** JSON-string escape. */
-    private static String jsonEsc(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
     }
 
     private void appendUrl(StringBuilder xml, String path, String lastmod, String changefreq, String priority) {

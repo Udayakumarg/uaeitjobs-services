@@ -65,10 +65,8 @@ public class AuthController {
             @RequestBody(required = false) AuthDTO.RefreshRequest body,
             HttpServletResponse response) {
 
-        String token = cookieToken != null ? cookieToken
-                : (body != null && body.refreshToken() != null && !body.refreshToken().isBlank()
-                        ? body.refreshToken() : null);
-        if (token == null || token.isBlank()) {
+        String token = resolveToken(cookieToken, body);
+        if (token == null) {
             throw new UnauthorizedException("Refresh token required");
         }
         AuthDTO.AuthResponse result = authService.refresh(token);
@@ -85,9 +83,8 @@ public class AuthController {
             @RequestBody(required = false) AuthDTO.RefreshRequest body,
             HttpServletResponse response) {
 
-        String token = cookieToken != null ? cookieToken
-                : (body != null ? body.refreshToken() : null);
-        if (token != null && !token.isBlank()) {
+        String token = resolveToken(cookieToken, body);
+        if (token != null) {
             authService.logout(token);
         }
         clearRefreshCookie(response);

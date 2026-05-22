@@ -25,6 +25,10 @@ server:
 app:
   frontend-url: ${APP_FRONTEND_URL:${FRONTEND_DOMAIN:http://localhost:3000}}
   frontend-domain: ${FRONTEND_DOMAIN:http://localhost:3000,http://localhost:5173}
+  # Dev-only CORS origins — set to empty string in production docker-compose
+  # to prevent localhost from being an allowed origin on the live server.
+  cors:
+    dev-origins: ${CORS_DEV_ORIGINS:http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173}
   upload-dir: ${UPLOAD_DIR:uploads}
   ingest:
     adzuna:
@@ -106,6 +110,10 @@ app:
       # Lettuce (the default client) connects lazily — the app starts normally
       # even if Redis is unreachable; the rate-limiter falls back to Caffeine.
       url: ${REDIS_URL:redis://localhost:6379}
+  cache:
+    # Caffeine is on the classpath; CacheConfig wires it explicitly.
+    # This entry documents the intent for readers — auto-config is bypassed.
+    type: none
 
 sendgrid:
   api-key: ${SENDGRID_API_KEY:}
@@ -115,3 +123,7 @@ sendgrid:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+    # Disable in production — set SWAGGER_ENABLED=true in dev only.
+    enabled: ${SWAGGER_ENABLED:false}
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}

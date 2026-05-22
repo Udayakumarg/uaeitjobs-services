@@ -30,8 +30,17 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final JwtAuthenticationEntryPoint entryPoint;
     private final CustomAccessDeniedHandler accessDeniedHandler;
+    /** Comma-separated production origins — always allowed. */
     @Value("${app.frontend-domain}")
-    private String frontendDomain;   // comma-separated for multi-origin support
+    private String frontendDomain;
+
+    /**
+     * Dev-only origins (localhost variants).  Set {@code CORS_DEV_ORIGINS=}
+     * (empty) in production docker-compose to keep localhost out of the live
+     * server's CORS allow-list.
+     */
+    @Value("${app.cors.dev-origins:}")
+    private String corsDevOrigins;
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -78,10 +87,16 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        List<String> origins = new java.util.ArrayList<>(List.of("http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:5173"));
-        for (String origin : frontendDomain.split(",")) {
-            String trimmed = origin.trim();
-            if (!trimmed.isEmpty()) origins.add(trimmed);
+        List<String> origins = new java.util.ArrayList<>();
+        // Dev origins (localhost) — empty string in production via CORS_DEV_ORIGINS=
+        for (String o : corsDevOrigins.split(",")) {
+            String t = o.trim();
+            if (!t.isEmpty()) origins.add(t);
+        }
+        // Production frontend origins (always included)
+        for (String o : frontendDomain.split(",")) {
+            String t = o.trim();
+            if (!t.isEmpty()) origins.add(t);
         }
         config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PATCH", "DELETE", "OPTIONS"));

@@ -5,12 +5,16 @@ import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotAllowedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.OffsetDateTime;
+import java.util.stream.Collectors;
 
 @Slf4j
 @RestControllerAdvice
@@ -20,12 +24,30 @@ public class GlobalExceptionHandler {
         return error(HttpStatus.NOT_FOUND, ex.getMessage(), request);
     }
 
-    @ExceptionHandler({ValidationException.class, MethodArgumentNotValidException.class, IllegalArgumentException.class})
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    ResponseEntity<ErrorResponse> validationError(MethodArgumentNotValidException ex, HttpServletRequest request) {
+        // Return ALL field errors so the client can highlight every invalid field at once.
+        String message = ex.getBindingResult().getFieldErrors().stream()
+                .map(e -> e.getField() + " " + e.getDefaultMessage())
+                .collect(Collectors.joining("; "));
+        return error(HttpStatus.BAD_REQUEST, message.isEmpty() ? "Validation failed" : message, request);
+    }
+
+    @ExceptionHandler({ValidationException.class, IllegalArgumentException.class})
     ResponseEntity<ErrorResponse> badRequest(Exception ex, HttpServletRequest request) {
-        String message = ex instanceof MethodArgumentNotValidException validation
-                ? validation.getBindingResult().getFieldErrors().stream().findFirst().map(e -> e.getField() + " " + e.getDefaultMessage()).orElse("Validation failed")
-                : ex.getMessage();
-        return error(HttpStatus.BAD_REQUEST, message, request);
+        return error(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+    /** Malformed JSON body — client error, should not log a stack trace. */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ResponseEntity<ErrorResponse> malformedBody(HttpMessageNotReadableException ex, HttpServletRequest request) {
+        return error(HttpStatus.BAD_REQUEST, "Malformed request body", request);
+    }
+
+    /** Wrong HTTP method — client error, should not log a stack trace. */
+    @ExceptionHandler(HttpRequestMethodNotAllowedException.class)
+    ResponseEntity<ErrorResponse> methodNotAllowed(HttpRequestMethodNotAllowedException ex, HttpServletRequest request) {
+        return error(HttpStatus.METHOD_NOT_ALLOWED, "Method not allowed", request);
     }
 
     @ExceptionHandler(UnauthorizedException.class)

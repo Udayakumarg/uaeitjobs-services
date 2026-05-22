@@ -1,5 +1,7 @@
 package com.uaeitjobs.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uaeitjobs.dto.JobDTO;
 import com.uaeitjobs.dto.StatsDTO;
 import com.uaeitjobs.entity.Job;
@@ -12,21 +14,21 @@ import com.uaeitjobs.repository.UserRepository;
 import com.uaeitjobs.service.ingest.pipeline.CompanyLogoResolver;
 import com.uaeitjobs.service.ingest.pipeline.description.HeuristicDescriptionFormatter;
 import com.uaeitjobs.util.JobCategoryClassifier;
+import com.uaeitjobs.util.SecurityUtils;
 import com.uaeitjobs.util.SlugGenerator;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.authentication.AnonymousAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.List;
-import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class JobService {
@@ -37,9 +39,10 @@ public class JobService {
     private final SubscriptionService subscriptionService;
     private final HeuristicDescriptionFormatter heuristicFormatter;
     private final AsyncDescriptionEnhancer asyncDescriptionEnhancer;
+    private final ObjectMapper objectMapper;
 
     public Page<JobDTO.JobResponse> list(Pageable pageable) {
-        boolean authed = isAuthenticated();
+        boolean authed = SecurityUtils.isAuthenticated();
         return jobRepository.findByActiveTrue(pageable)
                 .map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
     }
@@ -50,7 +53,7 @@ public class JobService {
         jobRepository.incrementViewCount(id);
         job.setViewCount(job.getViewCount() + 1);
         JobDTO.JobResponse resp = jobMapper.toResponse(job);
-        return isAuthenticated() ? resp : resp.withMaskedApply();
+        return SecurityUtils.isAuthenticated() ? resp : resp.withMaskedApply();
     }
 
     public Page<JobDTO.JobResponse> filter(String type, String level, String location, String skill, Pageable pageable) {
@@ -63,7 +66,7 @@ public class JobService {
         // Strip the JPA-style Sort — the native filter query owns its own
         // ORDER BY, and Spring would otherwise append `order by createdAt`
         // (camelCase property) which fails against the snake_case column.
-        boolean  authed   = isAuthenticated();
+        boolean  authed   = SecurityUtils.isAuthenticated();
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         return jobRepository.filter(
                 blankToNull(type),
@@ -98,7 +101,7 @@ public class JobService {
                                                 String q,
                                                 Pageable pageable) {
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
-        boolean  authed   = isAuthenticated();
+        boolean  authed   = SecurityUtils.isAuthenticated();
         return jobRepository.filterMulti(
                 joinOrEmpty(emirate),
                 joinOrEmpty(category),
@@ -129,7 +132,7 @@ public class JobService {
             return list(pageable);
         }
         // Search native query has its own ORDER BY (ts_rank) — strip Sort.
-        boolean  authed   = isAuthenticated();
+        boolean  authed   = SecurityUtils.isAuthenticated();
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         return jobRepository.search(query, unsorted)
                 .map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
@@ -249,19 +252,6 @@ public class JobService {
     }
 
     /**
-     * Returns {@code true} when the current request is made by a fully
-     * authenticated user (i.e. not the anonymous principal that Spring Security
-     * assigns to unauthenticated requests).  Used to decide whether to mask
-     * sensitive recruiter fields (applyUrl, linkedinUrl) in public API responses.
-     */
-    private static boolean isAuthenticated() {
-        var auth = SecurityContextHolder.getContext().getAuthentication();
-        return auth != null
-                && auth.isAuthenticated()
-                && !(auth instanceof AnonymousAuthenticationToken);
-    }
-
-    /**
      * Merge description + requirements into a single block so the formatter
      * produces one cohesive HTML output covering both sections. Either side
      * may be null/blank without losing the other.
@@ -282,6 +272,9 @@ public class JobService {
      * Accepts either a JSON array string ("[\"react\",\"java\"]") or a
      * comma-separated plain string ("react, java") and always returns a
      * valid JSON array string so the jsonb column is satisfied.
+     * <p>
+     * Jackson handles all escaping, so hand-rolled quote concatenation is
+     * avoided and injection of special characters is not possible.
      */
     private String normalizeSkills(String skills) {
         if (skills == null || skills.isBlank()) return "[]";
@@ -290,12 +283,16 @@ public class JobService {
             // Already a JSON array — trust it as-is
             return trimmed;
         }
-        // Plain comma-separated — wrap each token in quotes
-        String jsonArray = Arrays.stream(trimmed.split(","))
+        // Plain comma-separated — let Jackson build the JSON array
+        List<String> tokens = Arrays.stream(trimmed.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
-                .map(s -> "\"" + s.replace("\"", "\\\"") + "\"")
-                .collect(Collectors.joining(",", "[", "]"));
-        return jsonArray;
+                .toList();
+        try {
+            return objectMapper.writeValueAsString(tokens);
+        } catch (JsonProcessingException e) {
+            log.warn("normalizeSkills serialization failed, falling back to empty array", e);
+            return "[]";
+        }
     }
 }

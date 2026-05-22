@@ -106,10 +106,15 @@
             <artifactId>jsoup</artifactId>
             <version>1.18.1</version>
         </dependency>
-        <!-- Caffeine: TTL-evicted cache for rate-limiter fallback buckets (managed by Spring Boot BOM) -->
+        <!-- Caffeine: user-lookup cache + rate-limiter fallback buckets -->
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
             <artifactId>caffeine</artifactId>
+        </dependency>
+        <!-- Spring Cache abstraction — required for @Cacheable / @CacheEvict -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
         </dependency>
         <!-- Redis: distributed rate-limiting via Lua script; Caffeine is the fallback -->
         <dependency>
