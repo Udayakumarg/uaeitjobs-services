@@ -2,6 +2,7 @@ package com.uaeitjobs.service;
 
 import com.uaeitjobs.dto.LinkedInJobData;
 import com.uaeitjobs.exception.ValidationException;
+import com.uaeitjobs.service.ingest.pipeline.TechCatalog;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -12,7 +13,6 @@ import org.springframework.stereotype.Service;
 import java.net.InetAddress;
 import java.net.URL;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -20,13 +20,6 @@ import java.util.regex.Pattern;
 @Service
 public class LinkedInScraperService {
     private static final Pattern LINKEDIN_JOB = Pattern.compile("^https://([a-z]{2,3}\\.)?(www\\.)?linkedin\\.com/jobs/view/.*", Pattern.CASE_INSENSITIVE);
-    private static final List<String> COMMON_SKILLS = Arrays.asList(
-            "Java", "JavaScript", "TypeScript", "Python", "C#", "Go", "Rust",
-            "React", "Angular", "Vue", "Node.js", "Spring Boot", "Django", "FastAPI",
-            "PostgreSQL", "MongoDB", "Redis", "AWS", "Azure", "GCP", "Docker", "Kubernetes",
-            "Git", "REST API", "GraphQL", "Microservices", "SQL", "HTML", "CSS",
-            "AWS Lambda", "CI/CD", "Linux", "Windows", "MacOS", "Agile", "Scrum"
-    );
 
     public LinkedInJobData scrapeLinkedInJob(String linkedInUrl) {
         if (linkedInUrl == null || !LINKEDIN_JOB.matcher(linkedInUrl).matches()) {
@@ -131,12 +124,22 @@ public class LinkedInScraperService {
         return textOfFirst(doc, "span.salary-main", ".job-salary", ".compensation__salary", ".salary");
     }
 
+    /**
+     * Extracts recognised technology names from scraped job text using the
+     * shared {@link TechCatalog} regex patterns.
+     *
+     * <p>This replaces the former hand-maintained {@code COMMON_SKILLS} list so
+     * the LinkedIn scraper and the ingest pipeline always agree on which
+     * technologies exist and how their names are written.  {@code TechCatalog}
+     * patterns use {@link Pattern#CASE_INSENSITIVE}, so the raw text is passed
+     * unchanged (no need to {@code toLowerCase()} first).
+     */
     private List<String> extractSkills(String description, String requirements) {
-        String combined = (description + " " + requirements).toLowerCase();
+        String combined = description + " " + requirements;
         List<String> foundSkills = new ArrayList<>();
-        for (String skill : COMMON_SKILLS) {
-            if (combined.contains(skill.toLowerCase())) {
-                foundSkills.add(skill);
+        for (TechCatalog.TechMatcher m : TechCatalog.ENTRIES) {
+            if (m.pattern().matcher(combined).find()) {
+                foundSkills.add(TechCatalog.displayName(m.key()));
             }
         }
         return foundSkills.isEmpty() ? List.of("General IT", "Problem Solving") : foundSkills;

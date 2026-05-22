@@ -1,6 +1,7 @@
 package com.uaeitjobs.service.ingest.pipeline;
 
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -100,6 +101,96 @@ public final class TechCatalog {
         of("dbt",          "(?<![\\w])dbt(?![\\w])"),
         of("spark",        "(?<![\\w])spark(?![\\w])"),
         of("snowflake",    "(?<![\\w])snowflake(?![\\w])")
+    );
+
+    /**
+     * Returns a human-readable display name for a catalog key.
+     * Falls back to title-casing the key (e.g. {@code "spring boot"} →
+     * {@code "Spring Boot"}) when no explicit override is registered.
+     *
+     * <p>Used by the LinkedIn scraper (and any other consumer that needs to
+     * present a canonical tech name to the user rather than the internal key).
+     */
+    public static String displayName(String key) {
+        return DISPLAY_NAMES.getOrDefault(key, titleCase(key));
+    }
+
+    private static String titleCase(String s) {
+        if (s == null || s.isBlank()) return s;
+        String[] words = s.split("\\s+");
+        StringBuilder sb = new StringBuilder();
+        for (String w : words) {
+            if (!sb.isEmpty()) sb.append(' ');
+            sb.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1));
+        }
+        return sb.toString();
+    }
+
+    // ── Display-name overrides for keys that differ from simple title-case ──
+    private static final Map<String, String> DISPLAY_NAMES = Map.ofEntries(
+        Map.entry("java",          "Java"),
+        Map.entry("python",        "Python"),
+        Map.entry("javascript",    "JavaScript"),
+        Map.entry("typescript",    "TypeScript"),
+        Map.entry("csharp",        "C#"),
+        Map.entry("go",            "Go"),
+        Map.entry("rust",          "Rust"),
+        Map.entry("kotlin",        "Kotlin"),
+        Map.entry("swift",         "Swift"),
+        Map.entry("ruby",          "Ruby"),
+        Map.entry("php",           "PHP"),
+        Map.entry("scala",         "Scala"),
+        Map.entry("react native",  "React Native"),
+        Map.entry("react",         "React"),
+        Map.entry("angular",       "Angular"),
+        Map.entry("vue",           "Vue"),
+        Map.entry("svelte",        "Svelte"),
+        Map.entry("nextjs",        "Next.js"),
+        Map.entry("spring boot",   "Spring Boot"),
+        Map.entry("node",          "Node.js"),
+        Map.entry("express",       "Express"),
+        Map.entry("django",        "Django"),
+        Map.entry("flask",         "Flask"),
+        Map.entry("fastapi",       "FastAPI"),
+        Map.entry("rails",         "Ruby on Rails"),
+        Map.entry("laravel",       "Laravel"),
+        Map.entry("aws",           "AWS"),
+        Map.entry("azure",         "Azure"),
+        Map.entry("gcp",           "GCP"),
+        Map.entry("kubernetes",    "Kubernetes"),
+        Map.entry("docker",        "Docker"),
+        Map.entry("terraform",     "Terraform"),
+        Map.entry("ansible",       "Ansible"),
+        Map.entry("jenkins",       "Jenkins"),
+        Map.entry("postgresql",    "PostgreSQL"),
+        Map.entry("mysql",         "MySQL"),
+        Map.entry("mongodb",       "MongoDB"),
+        Map.entry("redis",         "Redis"),
+        Map.entry("oracle",        "Oracle DB"),
+        Map.entry("cassandra",     "Cassandra"),
+        Map.entry("elasticsearch", "Elasticsearch"),
+        Map.entry("kafka",         "Kafka"),
+        Map.entry("rabbitmq",      "RabbitMQ"),
+        Map.entry("sqs",           "AWS SQS"),
+        Map.entry("selenium",      "Selenium"),
+        Map.entry("playwright",    "Playwright"),
+        Map.entry("cypress",       "Cypress"),
+        Map.entry("junit",         "JUnit"),
+        Map.entry("testng",        "TestNG"),
+        Map.entry("pytest",        "pytest"),
+        Map.entry("cucumber",      "Cucumber"),
+        Map.entry("appium",        "Appium"),
+        Map.entry("postman",       "Postman"),
+        Map.entry("oauth",         "OAuth"),
+        Map.entry("saml",          "SAML"),
+        Map.entry("keycloak",      "Keycloak"),
+        Map.entry("auth0",         "Auth0"),
+        Map.entry("pytorch",       "PyTorch"),
+        Map.entry("tensorflow",    "TensorFlow"),
+        Map.entry("airflow",       "Apache Airflow"),
+        Map.entry("dbt",           "dbt"),
+        Map.entry("spark",         "Apache Spark"),
+        Map.entry("snowflake",     "Snowflake")
     );
 
     private TechCatalog() {}

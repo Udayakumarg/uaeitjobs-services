@@ -202,28 +202,25 @@ public class JobService {
         return job;
     }
 
+    /**
+     * Applies a {@link JobDTO.JobRequest} onto a {@link Job} entity.
+     * MapStruct handles all scalar property copies; this method covers only the
+     * fields that require domain-specific transformation logic.
+     */
     private Job apply(Job job, JobDTO.JobRequest request) {
-        job.setTitle(request.title());
-        job.setCompanyName(request.companyName());
-        job.setDescription(request.description());
-        job.setRequirements(request.requirements());
-        job.setSalaryMin(request.salaryMin());
-        job.setSalaryMax(request.salaryMax());
-        job.setSalaryCurrency(request.salaryCurrency() == null ? "AED" : request.salaryCurrency());
-        job.setJobType(request.jobType());
-        job.setExperienceLevel(request.experienceLevel());
-        job.setLocationUae(request.locationUae());
+        // Scalar fields delegated to MapStruct (title, companyName, description,
+        // requirements, salary, jobType, experienceLevel, locationUae, linkedinUrl,
+        // featured, expiresAt, immediateJoiner, remoteUae, salaryCurrency default "AED").
+        jobMapper.updateEntityFromRequest(request, job);
+
+        // ── Fields with custom transformation ────────────────────────────────
         job.setSkills(normalizeSkills(request.skills()));
-        job.setLinkedinUrl(request.linkedinUrl());
-        job.setFeatured(Boolean.TRUE.equals(request.featured()));
-        job.setExpiresAt(request.expiresAt());
         job.setVisaType(blankToNull(request.visaType()));
         job.setEmirate(blankToNull(request.emirate()));
-        job.setImmediateJoiner(Boolean.TRUE.equals(request.immediateJoiner()));
-        job.setRemoteUae(Boolean.TRUE.equals(request.remoteUae()));
         job.setApplyUrl(blankToNull(request.applyUrl()));
         job.setCompanyDomain(logoResolver.domain(request.applyUrl(), request.linkedinUrl(), request.companyName()));
         job.setCompanyLogoUrl(logoResolver.resolve(request.applyUrl(), request.linkedinUrl(), request.companyName()));
+
         String requestedCategory = blankToNull(request.jobCategory());
         if (JobCategoryClassifier.isValid(requestedCategory)) {
             job.setJobCategory(requestedCategory);
@@ -231,8 +228,9 @@ public class JobService {
             String inferred = JobCategoryClassifier.classify(request.title(), request.skills());
             job.setJobCategory(inferred != null ? inferred : JobCategoryClassifier.OTHER);
         }
+
         if (job.getLastSeenAt() == null) {
-            job.setLastSeenAt(java.time.OffsetDateTime.now());
+            job.setLastSeenAt(OffsetDateTime.now());
         }
         return job;
     }
