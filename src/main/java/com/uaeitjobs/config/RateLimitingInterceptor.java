@@ -29,20 +29,29 @@ import java.util.concurrent.TimeUnit;
  *       {@code /stats}, {@code /locations}): 60 req / min per IP.</li>
  * </ul>
  *
- * <p>Primary backend: Redis fixed-window Lua script (atomic, shared across
- * all application instances).  If Redis is unavailable the interceptor falls
- * back transparently to per-process Caffeine buckets so the app continues to
- * function at the cost of per-instance (not global) rate limiting.
+ * <p>Primary backend: Redis <em>sliding-window</em> Lua script backed by a
+ * sorted set (ZSET) of request timestamps.  Every call removes entries older
+ * than one window, counts what remains, and rejects if the count equals the
+ * limit — so bursts cannot be doubled by straddling a fixed-window boundary.
+ * The script is atomic (Redis single-threaded) and shared across all
+ * application instances.
+ *
+ * <p>If Redis is unavailable the interceptor falls back transparently to
+ * per-process Bucket4j token-bucket buckets (greedy refill) so the app
+ * continues to function at the cost of per-instance (not global) limiting.
  */
 @Slf4j
 @Component
 public class RateLimitingInterceptor implements HandlerInterceptor {
 
     // ── Caffeine fallback limits (bucket4j 7.x API) ──────────────────────────
+    // Greedy refill = token-bucket: tokens replenish continuously rather than
+    // all-at-once at window reset, which prevents the fixed-window boundary
+    // burst even in the local fallback path.
     private static final Bandwidth AUTH_BANDWIDTH =
-            Bandwidth.classic(5,  Refill.intervally(5,  Duration.ofMinutes(1)));
+            Bandwidth.classic(5,  Refill.greedy(5,  Duration.ofMinutes(1)));
     private static final Bandwidth PUBLIC_BANDWIDTH =
-            Bandwidth.classic(60, Refill.intervally(60, Duration.ofMinutes(1)));
+            Bandwidth.classic(60, Refill.greedy(60, Duration.ofMinutes(1)));
 
     /** Bounded, TTL-evicting cache: max 10 000 keys, entries expire 5 min after last write. */
     private final Cache<String, Bucket> buckets = Caffeine.newBuilder()
@@ -60,21 +69,43 @@ public class RateLimitingInterceptor implements HandlerInterceptor {
     private StringRedisTemplate redis;
 
     /**
-     * Fixed-window rate-limit Lua script.
+     * Sliding-window rate-limit Lua script backed by a Redis sorted set.
      * <pre>
-     * KEYS[1] = rate-limit bucket key  (e.g. "rl:auth:1.2.3.4")
+     * KEYS[1] = ZSET key               (e.g. "rl:auth:1.2.3.4")
      * ARGV[1] = per-window limit        (e.g. "5")
      * ARGV[2] = window duration seconds (e.g. "60")
      * Returns 1 = request allowed, 0 = request rejected.
      * </pre>
+     *
+     * <p>Algorithm (atomic — Redis is single-threaded):
+     * <ol>
+     *   <li>Read current time from Redis TIME (seconds + microseconds).</li>
+     *   <li>Evict all ZSET members whose score is older than {@code now − window}.</li>
+     *   <li>Count remaining members (requests in the current window).</li>
+     *   <li>If count &lt; limit: add the current timestamp as a new member,
+     *       refresh the key TTL, and return 1 (allowed).</li>
+     *   <li>Otherwise return 0 (rejected).</li>
+     * </ol>
+     *
+     * <p>Microseconds from TIME are used as ZSET member values so concurrent
+     * requests within the same millisecond each get a unique entry.
      */
     private static final DefaultRedisScript<Long> RATE_LIMIT_SCRIPT = new DefaultRedisScript<>("""
-            local cnt = redis.call('INCR', KEYS[1])
-            if cnt == 1 then redis.call('EXPIRE', KEYS[1], ARGV[2]) end
-            if cnt <= tonumber(ARGV[1]) then return 1 else return 0 end
+            local t        = redis.call('TIME')
+            local now_us   = tonumber(t[1]) * 1000000 + tonumber(t[2])
+            local now_ms   = math.floor(now_us / 1000)
+            local window_ms = tonumber(ARGV[2]) * 1000
+            local limit    = tonumber(ARGV[1])
+            redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now_ms - window_ms)
+            local count = tonumber(redis.call('ZCARD', KEYS[1]))
+            if count < limit then
+                redis.call('ZADD', KEYS[1], now_ms, now_us)
+                redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]) + 1)
+                return 1
+            else
+                return 0
+            end
             """, Long.class);
-
-    // ── HandlerInterceptor ────────────────────────────────────────────────────
 
     // ── HandlerInterceptor ────────────────────────────────────────────────────
     //
