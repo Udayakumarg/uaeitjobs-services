@@ -8,7 +8,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
-import org.springframework.web.HttpRequestMethodNotAllowedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -42,12 +41,6 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     ResponseEntity<ErrorResponse> malformedBody(HttpMessageNotReadableException ex, HttpServletRequest request) {
         return error(HttpStatus.BAD_REQUEST, "Malformed request body", request);
-    }
-
-    /** Wrong HTTP method — client error, should not log a stack trace. */
-    @ExceptionHandler(HttpRequestMethodNotAllowedException.class)
-    ResponseEntity<ErrorResponse> methodNotAllowed(HttpRequestMethodNotAllowedException ex, HttpServletRequest request) {
-        return error(HttpStatus.METHOD_NOT_ALLOWED, "Method not allowed", request);
     }
 
     @ExceptionHandler(UnauthorizedException.class)
