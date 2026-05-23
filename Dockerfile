@@ -1,8 +1,11 @@
+# syntax=docker/dockerfile:1
 FROM maven:3.9.11-eclipse-temurin-17 AS build
 WORKDIR /app
 COPY pom.xml .
 COPY src ./src
-RUN mvn -q -DskipTests package
+# BuildKit cache mount: /root/.m2 persists between builds on the same host
+# so Maven never re-downloads the internet on every deploy.
+RUN --mount=type=cache,target=/root/.m2 mvn -q -DskipTests package
 
 FROM eclipse-temurin:17-jre
 WORKDIR /app
