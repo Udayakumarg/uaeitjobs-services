@@ -69,7 +69,7 @@ public class JobSeekerService {
     @Transactional
     public JobSeekerProfileDTO.Response updateSkills(User user, String skills) {
         JobSeekerProfile profile = profileRepository.findByUser(user).orElseThrow(() -> new ResourceNotFoundException("Profile not found"));
-        profile.setSkills(defaultJson(skills));
+        profile.setSkills(skillsToJson(skills));
         return toResponse(profile);
     }
 
