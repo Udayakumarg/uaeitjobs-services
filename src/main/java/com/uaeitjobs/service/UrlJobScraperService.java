@@ -1,0 +1,298 @@
+package com.uaeitjobs.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.uaeitjobs.dto.UrlImportDTO;
+import com.uaeitjobs.exception.ValidationException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.springframework.stereotype.Service;
+
+import java.net.InetAddress;
+import java.net.URL;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Scrapes a public HTTPS job-posting URL and returns whatever structured data
+ * it can extract — without ever needing a JS engine.
+ *
+ * <h3>Extraction strategy (highest → lowest fidelity)</h3>
+ * <ol>
+ *   <li>JSON-LD {@code JobPosting} schema — most modern ATS / career sites embed
+ *       this for SEO (Greenhouse, Lever, Workday, Taleo, SAP SF, many custom sites).</li>
+ *   <li>Open Graph meta properties ({@code og:title}, {@code og:description},
+ *       {@code og:site_name}).</li>
+ *   <li>{@code <meta name="description">} and {@code <title>} tag fallbacks.</li>
+ * </ol>
+ *
+ * <h3>JS-rendered ATSs (Avature, Workday *web views*, iCIMS)</h3>
+ * These pages render job content client-side, so Jsoup only sees the shell HTML.
+ * Title and company are usually still present in {@code og:*} meta tags (put
+ * there by the SSR layer for link-preview crawlers).  The description will be
+ * null — the caller should surface an "edit before saving" UI.
+ *
+ * <h3>SSRF protection</h3>
+ * Private, loopback, link-local and multicast addresses are rejected before any
+ * network call is made.  Only HTTPS is accepted.
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class UrlJobScraperService {
+
+    // Well-known ATS hostnames whose subdomain or path contains the employer name,
+    // not a useful "company" string.
+    private static final Set<String> ATS_HOSTS = Set.of(
+            "workday.com", "greenhouse.io", "lever.co", "taleo.net",
+            "avature.net", "smartrecruiters.com", "brassring.com",
+            "icims.com", "successfactors.com", "jobvite.com",
+            "ultipro.com", "paylocity.com"
+    );
+
+    private final ObjectMapper objectMapper;
+
+    // ── Public entry point ────────────────────────────────────────────────────
+
+    /**
+     * Fetches and parses {@code rawUrl}.  Never throws — returns a minimal
+     * {@link UrlImportDTO.Preview} with {@code complete=false} and a {@code message}
+     * explaining what went wrong so the admin can fill in the rest manually.
+     */
+    public UrlImportDTO.Preview scrape(String rawUrl) {
+        if (rawUrl == null || rawUrl.isBlank()) throw new ValidationException("URL is required");
+        String url = rawUrl.strip();
+        if (!url.startsWith("https://")) throw new ValidationException("Only HTTPS URLs are supported");
+        validateNoSsrf(url);
+
+        try {
+            Document doc = Jsoup.connect(url)
+                    .userAgent("Mozilla/5.0 (compatible; UAEITBot/1.0; +https://www.uaeitjobs.com)")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .timeout(12_000)
+                    .followRedirects(true)
+                    .get();
+            return parseDocument(doc, url);
+        } catch (ValidationException ve) {
+            throw ve;
+        } catch (Exception ex) {
+            log.warn("Could not fetch {}: {}", url, ex.getMessage());
+            // Return a minimal shell so the admin can still fill in the job manually.
+            return UrlImportDTO.Preview.builder()
+                    .applyUrl(url)
+                    .companyName(blankToNull(companyFromDomain(url)))
+                    .complete(false)
+                    .message("Could not fetch page (" + ex.getMessage()
+                            + "). Fill in the details manually and click Import.")
+                    .build();
+        }
+    }
+
+    // ── Parsing ───────────────────────────────────────────────────────────────
+
+    /** Package-private for unit tests. */
+    UrlImportDTO.Preview parseDocument(Document doc, String url) {
+        // 1. JSON-LD JobPosting schema — most reliable when present
+        UrlImportDTO.Preview ld = tryJsonLd(doc, url);
+        if (ld != null) return ld;
+
+        // 2. Open Graph / Twitter Card / meta description / <title>
+        String title = coalesce(
+                metaProp(doc, "og:title"),
+                metaName(doc, "twitter:title"),
+                doc.title()
+        );
+        title = stripSiteSuffix(title);
+
+        String company = coalesce(
+                metaProp(doc, "og:site_name"),
+                companyFromDomain(url)
+        );
+
+        String description = coalesce(
+                metaProp(doc, "og:description"),
+                metaName(doc, "twitter:description"),
+                metaName(doc, "description")
+        );
+
+        String location = metaProp(doc, "og:locality");  // sometimes present on ATS pages
+
+        boolean complete = !title.isBlank() && !description.isBlank();
+        String message = complete ? null
+                : "This page is JavaScript-rendered — the description could not be extracted automatically. "
+                + "Copy it from the careers page and paste it below, then click Import.";
+
+        return UrlImportDTO.Preview.builder()
+                .title(blankToNull(title))
+                .companyName(blankToNull(company))
+                .description(blankToNull(description))
+                .locationUae(blankToNull(location))
+                .applyUrl(url)
+                .complete(complete)
+                .message(message)
+                .build();
+    }
+
+    private UrlImportDTO.Preview tryJsonLd(Document doc, String url) {
+        for (Element script : doc.select("script[type='application/ld+json']")) {
+            try {
+                JsonNode root = objectMapper.readTree(script.data());
+                // Handle both {"@type":"JobPosting",...} and [{"@type":"JobPosting",...},...]
+                JsonNode node = root.isArray() ? firstJobPosting(root) : root;
+                if (node == null) continue;
+                if (!"JobPosting".equalsIgnoreCase(node.path("@type").asText(""))) continue;
+
+                String title       = coalesce(node.path("title").asText(""),
+                                              node.path("name").asText(""));
+                String company     = node.path("hiringOrganization").path("name").asText("");
+                String description = stripHtmlTags(node.path("description").asText(""));
+                String city        = node.path("jobLocation").path("address")
+                                        .path("addressLocality").asText("");
+
+                if (title.isBlank()) continue;   // not a real JobPosting node
+
+                boolean complete = !description.isBlank();
+                return UrlImportDTO.Preview.builder()
+                        .title(title)
+                        .companyName(company.isBlank() ? blankToNull(companyFromDomain(url)) : company)
+                        .description(blankToNull(description))
+                        .locationUae(blankToNull(city))
+                        .applyUrl(url)
+                        .complete(complete)
+                        .message(complete ? null
+                                : "Structured data found but the description field is empty — please fill it in below.")
+                        .build();
+            } catch (Exception ignored) {
+                // Malformed JSON-LD — move to next <script> block
+            }
+        }
+        return null;
+    }
+
+    private static JsonNode firstJobPosting(JsonNode array) {
+        for (JsonNode n : array) {
+            if ("JobPosting".equalsIgnoreCase(n.path("@type").asText(""))) return n;
+        }
+        return null;
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private String metaProp(Document doc, String prop) {
+        Element el = doc.selectFirst("meta[property='" + prop + "']");
+        return el != null ? el.attr("content").strip() : "";
+    }
+
+    private String metaName(Document doc, String name) {
+        Element el = doc.selectFirst("meta[name='" + name + "']");
+        return el != null ? el.attr("content").strip() : "";
+    }
+
+    /** Returns the first non-blank value from the provided candidates. */
+    private static String coalesce(String... values) {
+        for (String v : values) {
+            if (v != null && !v.isBlank()) return v;
+        }
+        return "";
+    }
+
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s;
+    }
+
+    /**
+     * Strips " | Site Name" or " – Site Name" suffixes that browsers inject into
+     * the page {@code <title>} tag (e.g. "IT Delivery Lead | Emirates Group Careers").
+     * We only strip if the left-hand fragment looks like a plausible job title
+     * (≤ 10 words), otherwise the whole string is kept.
+     */
+    private static String stripSiteSuffix(String t) {
+        if (t == null || t.isBlank()) return "";
+        for (String sep : new String[]{" | ", " – ", " — ", " :: "}) {
+            int idx = t.lastIndexOf(sep);
+            if (idx > 0) {
+                String candidate = t.substring(0, idx).strip();
+                if (candidate.split("\\s+").length <= 10) return candidate;
+            }
+        }
+        return t.strip();
+    }
+
+    /**
+     * Rudimentary HTML tag stripping — used when JSON-LD description contains
+     * inline HTML markup (which some ATSs inject).
+     */
+    private static String stripHtmlTags(String html) {
+        if (html == null || html.isBlank()) return "";
+        return html.replaceAll("<[^>]+>", " ")
+                   .replaceAll("&nbsp;", " ")
+                   .replaceAll("&amp;", "&")
+                   .replaceAll("&lt;", "<")
+                   .replaceAll("&gt;", ">")
+                   .replaceAll("\\s{2,}", " ")
+                   .strip();
+    }
+
+    /**
+     * Derives a rough company name from the careers-page hostname as a
+     * last resort (used only when og:site_name is absent).
+     *
+     * <pre>
+     *   "emiratesgroupcareers.com"  →  "Emiratesgroup"   (og:site_name preferred)
+     *   "careers.etisalat.com"      →  "Etisalat"
+     *   "jobs.du.ae"                →  "Du"
+     * </pre>
+     */
+    static String companyFromDomain(String rawUrl) {
+        try {
+            String host = new URL(rawUrl).getHost()
+                    .toLowerCase()
+                    .replaceFirst("^www\\.", "")
+                    .replaceFirst("^(?:careers?|jobs?|talent|recruitment)\\.", "");
+
+            // If this is an ATS sub-domain we can't derive the company from it
+            for (String ats : ATS_HOSTS) {
+                if (host.endsWith(ats)) return "";
+            }
+
+            // Strip TLD, common career-page suffixes, separators
+            host = host
+                    .replaceFirst("\\.[a-z]{2,6}$", "")
+                    .replaceAll("(?i)(careers?|jobs?|recruit|talent)$", "")
+                    .replaceAll("[._\\-]", " ")
+                    .strip();
+            if (host.isBlank()) return "";
+
+            return Arrays.stream(host.split("\\s+"))
+                    .filter(w -> !w.isBlank())
+                    .map(w -> Character.toUpperCase(w.charAt(0)) + w.substring(1))
+                    .collect(Collectors.joining(" "));
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    // ── SSRF guard ────────────────────────────────────────────────────────────
+
+    private void validateNoSsrf(String rawUrl) {
+        try {
+            String host = new URL(rawUrl).getHost();
+            if (host == null || host.isBlank()) throw new ValidationException("Malformed URL — no host");
+            InetAddress addr = InetAddress.getByName(host);
+            if (addr.isLoopbackAddress() || addr.isSiteLocalAddress()
+                    || addr.isLinkLocalAddress() || addr.isAnyLocalAddress()
+                    || addr.isMulticastAddress()) {
+                log.warn("SSRF probe blocked — {} resolved to forbidden address {}", host, addr.getHostAddress());
+                throw new ValidationException("URL resolves to a forbidden network address");
+            }
+        } catch (java.net.MalformedURLException e) {
+            throw new ValidationException("Malformed URL");
+        } catch (java.net.UnknownHostException e) {
+            throw new ValidationException("Could not resolve URL host: " + e.getMessage());
+        }
+    }
+}

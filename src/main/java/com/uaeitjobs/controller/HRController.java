@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.regex.Pattern;
+
 @RestController
 @RequestMapping("/api/v1")
 @RequiredArgsConstructor
@@ -17,6 +19,11 @@ public class HRController {
     private final JobService jobService;
     private final SubscriptionService subscriptionService;
     private final CurrentUserService currentUserService;
+    private final UrlJobScraperService urlJobScraperService;
+    private final LinkedInScraperService linkedInScraperService;
+
+    private static final Pattern LINKEDIN_JOB_URL =
+            Pattern.compile("https?://([a-z]{2,3}\\.)?linkedin\\.com/jobs/view/.*", Pattern.CASE_INSENSITIVE);
 
     @PostMapping("/hr/profile")
     public HRProfileDTO.Response upsertProfile(@Valid @RequestBody HRProfileDTO.Request request) {
@@ -46,6 +53,40 @@ public class HRController {
     @PostMapping("/linkedin-import")
     public JobDTO.JobResponse importLinkedIn(@Valid @RequestBody LinkedInImportRequest request) {
         return hrService.importLinkedIn(currentUserService.get(), request.linkedInUrl());
+    }
+
+    /**
+     * Preview-only endpoint: fetches the job URL and extracts whatever data is
+     * available.  Returns a {@link UrlImportDTO.Preview} — never saves anything.
+     *
+     * <ul>
+     *   <li>LinkedIn job URLs go through the existing {@link LinkedInScraperService}
+     *       which knows LinkedIn's HTML selectors.</li>
+     *   <li>All other URLs go through the generic {@link UrlJobScraperService}
+     *       which tries JSON-LD → og:* meta → title tag in that order.</li>
+     * </ul>
+     *
+     * The caller reviews the preview, fills in any missing fields (especially
+     * the description when the page is JS-rendered), and then POSTs to
+     * {@code /api/v1/jobs} to persist the final job.
+     */
+    @PostMapping("/hr/jobs/import-preview")
+    public UrlImportDTO.Preview importPreview(@Valid @RequestBody UrlImportDTO.Request request) {
+        String url = request.url().strip();
+
+        if (LINKEDIN_JOB_URL.matcher(url).matches()) {
+            // LinkedIn: reuse the existing scraper that knows LinkedIn's HTML structure
+            LinkedInJobData ld = linkedInScraperService.scrapeLinkedInJob(url);
+            return UrlImportDTO.Preview.builder()
+                    .title(ld.getTitle())
+                    .companyName(ld.getCompanyName())
+                    .description(ld.getDescription())
+                    .applyUrl(url)
+                    .complete(true)
+                    .build();
+        }
+
+        return urlJobScraperService.scrape(url);
     }
 
     @GetMapping("/subscriptions/current")
