@@ -152,6 +152,11 @@ public class JobService {
             throw new ValidationException("Verify email before posting jobs");
         }
         subscriptionService.assertCanPost(user);
+        // Duplicate guard — block re-importing the same job URL
+        String applyUrl = request.applyUrl() != null ? request.applyUrl().strip() : null;
+        if (applyUrl != null && !applyUrl.isBlank() && jobRepository.existsByApplyUrl(applyUrl)) {
+            throw new ValidationException("A job with this URL has already been posted");
+        }
         Job job = apply(new Job(), request);
         job.setSlug(uniqueSlug(request.title()));
         job.setPostedBy(user);
