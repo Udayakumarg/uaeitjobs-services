@@ -16,7 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -42,9 +44,9 @@ public class JobSeekerService {
         profile.setSummary(request.summary());
         profile.setYearsExperience(request.yearsExperience());
         profile.setVisaStatus(request.visaStatus());
-        profile.setSkills(defaultJson(request.skills()));
-        profile.setExperience(defaultJson(request.experience()));
-        profile.setEducation(defaultJson(request.education()));
+        profile.setSkills(skillsToJson(request.skills()));
+        profile.setExperience(request.experience() != null ? request.experience() : "");
+        profile.setEducation(request.education() != null ? request.education() : "");
         return toResponse(profileRepository.save(profile));
     }
 
@@ -122,8 +124,23 @@ public class JobSeekerService {
         return new JobSeekerProfileDTO.Response(profile.getId(), profile.getCvUrl(), profile.getHeadline(), profile.getSummary(), profile.getYearsExperience(), profile.getVisaStatus(), profile.getSkills(), profile.getExperience(), profile.getEducation());
     }
 
-    private String defaultJson(String value) {
-        return value == null || value.isBlank() ? "[]" : value;
+    /**
+     * Converts a user-supplied skills string into a valid JSONB array.
+     * Accepts either a pre-formed JSON array ("[\"Java\",\"React\"]") or a
+     * plain comma-separated list ("Java, React, AWS") and normalises both
+     * to a proper JSON array so the JSONB column never rejects the value.
+     */
+    private String skillsToJson(String value) {
+        if (value == null || value.isBlank()) return "[]";
+        String v = value.trim();
+        if (v.startsWith("[")) return v;  // already a JSON array — pass through
+        // Plain comma-separated text → ["Java","React","AWS"]
+        String items = Arrays.stream(v.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .map(s -> "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"") + "\"")
+                .collect(Collectors.joining(","));
+        return "[" + items + "]";
     }
 
     private String applicantName(User user) {

@@ -31,10 +31,12 @@ public class JobSeekerProfile {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb", nullable = false)
     private String skills = "[]";
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb", nullable = false)
-    private String experience = "[]";
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb", nullable = false)
-    private String education = "[]";
+
+    /** Free-form experience text entered by the user (plain text, not JSON). */
+    @Column(columnDefinition = "text", nullable = false)
+    private String experience = "";
+
+    /** Free-form education text entered by the user (plain text, not JSON). */
+    @Column(columnDefinition = "text", nullable = false)
+    private String education = "";
 }
