@@ -9,6 +9,9 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -172,6 +175,10 @@ public class AdzunaSource implements JobIngestSource {
             default -> "full_time";
         };
 
+        // Adzuna returns "created": "2024-01-25T00:00:00Z" — parse it so the
+        // job list shows the original posting date, not the ingestion timestamp.
+        OffsetDateTime postedAt = parseAdzunaDate(optString(node, "created"));
+
         return new IngestedJob(
                 externalId,
                 name(),
@@ -188,7 +195,8 @@ public class AdzunaSource implements JobIngestSource {
                 jobType,
                 inferExperience(title),
                 redirect,
-                false
+                false,
+                postedAt
         );
     }
 
@@ -211,6 +219,15 @@ public class AdzunaSource implements JobIngestSource {
         if (lower.contains("junior") || lower.contains("graduate") || lower.contains("entry")) return "junior_1_2_yrs";
         if (lower.contains("intern")) return "fresher";
         return "mid_3_5_yrs";
+    }
+
+    private static OffsetDateTime parseAdzunaDate(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        try {
+            return Instant.parse(raw).atOffset(ZoneOffset.UTC);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private static String sanitize(String html) {

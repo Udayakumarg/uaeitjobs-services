@@ -34,6 +34,7 @@ public interface JobMapper {
     @Mapping(target = "id",            ignore = true)
     @Mapping(target = "slug",          ignore = true)
     @Mapping(target = "postedBy",      ignore = true)
+    @Mapping(target = "postedAt",      ignore = true)
     @Mapping(target = "createdAt",     ignore = true)
     @Mapping(target = "updatedAt",     ignore = true)
     @Mapping(target = "source",        ignore = true)

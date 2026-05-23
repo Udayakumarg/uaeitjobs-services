@@ -147,6 +147,14 @@ public class Job {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "posted_by_id")
     private User postedBy;
+    /**
+     * The date the job was originally published at the source (Adzuna,
+     * JSearch, LinkedIn, etc.).  For HR-posted jobs this equals the
+     * moment the HR user submitted the form.  NULL for rows ingested
+     * before V15 — the frontend falls back to {@code createdAt}.
+     */
+    @Column(name = "posted_at")
+    private OffsetDateTime postedAt;
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;

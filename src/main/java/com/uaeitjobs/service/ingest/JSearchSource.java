@@ -13,6 +13,11 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -215,6 +220,14 @@ public class JSearchSource {
                 + (countryCode == null ? "" : ", " + countryCode);
         if (location.isBlank()) location = "United Arab Emirates";
 
+        // JSearch provides job_posted_at_datetime_utc ("2024-01-25 00:00:00")
+        // and job_posted_at_timestamp (unix epoch seconds) so we can show
+        // the real posting date rather than the ingest timestamp.
+        OffsetDateTime postedAt = parseJSearchDate(
+                optText(node, "job_posted_at_datetime_utc"),
+                node.has("job_posted_at_timestamp") && !node.get("job_posted_at_timestamp").isNull()
+                        ? node.get("job_posted_at_timestamp").asLong() : null);
+
         return new IngestedJob(
                 id,
                 "jsearch",
@@ -231,7 +244,8 @@ public class JSearchSource {
                 jobType,
                 inferExperience(title),
                 url,
-                remote
+                remote,
+                postedAt
         );
     }
 
@@ -302,6 +316,24 @@ public class JSearchSource {
         if (t.contains("junior") || t.contains("entry") || t.contains("graduate")) return "junior_1_2_yrs";
         if (t.contains("intern")) return "fresher";
         return "mid_3_5_yrs";
+    }
+
+    private static final DateTimeFormatter JSEARCH_DT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    /** Parses JSearch's UTC datetime string or unix-epoch-second fallback. */
+    private static OffsetDateTime parseJSearchDate(String datetimeUtc, Long epochSeconds) {
+        if (datetimeUtc != null && !datetimeUtc.isBlank()) {
+            try {
+                return LocalDateTime.parse(datetimeUtc, JSEARCH_DT).atOffset(ZoneOffset.UTC);
+            } catch (Exception ignored) { /* fall through */ }
+        }
+        if (epochSeconds != null && epochSeconds > 0) {
+            try {
+                return Instant.ofEpochSecond(epochSeconds).atOffset(ZoneOffset.UTC);
+            } catch (Exception ignored) { /* fall through */ }
+        }
+        return null;
     }
 
     private static String optText(JsonNode node, String field) {

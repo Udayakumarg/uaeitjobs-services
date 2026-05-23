@@ -153,7 +153,9 @@ public class JobService {
         job.setSlug(uniqueSlug(request.title()));
         job.setPostedBy(user);
         job.setSource(source);
-        job.setLastSeenAt(OffsetDateTime.now());
+        OffsetDateTime now = OffsetDateTime.now();
+        job.setPostedAt(now);   // HR-posted: original date = moment of submission
+        job.setLastSeenAt(now);
         // Two-stage formatting:
         //   1. Heuristic runs synchronously so the API responds in < 50ms
         //      — the HR user sees the job appear immediately.

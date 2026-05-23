@@ -128,7 +128,8 @@ public class HimalayasSource implements JobIngestSource {
                 "full_time",
                 inferExperience(title),
                 applyUrl,
-                true
+                true,
+                null  // Himalayas API does not expose original posting date
         );
     }
 

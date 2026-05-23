@@ -1,5 +1,7 @@
 package com.uaeitjobs.service.ingest;
 
+import java.time.OffsetDateTime;
+
 /**
  * Source-agnostic representation of a job pulled from an external feed.
  * Each ingest source maps its API response into this DTO; the pipeline is
@@ -21,6 +23,7 @@ public record IngestedJob(
         String jobType,
         String experienceLevel,
         String applyUrl,
-        boolean remoteUae
+        boolean remoteUae,
+        OffsetDateTime postedAt  // original posting date from the source API; null when unavailable
 ) {
 }

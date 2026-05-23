@@ -229,6 +229,9 @@ public class JobIngestPipeline {
         job.setDuplicateSourceCount(1);
         job.setPublisher(incoming.publisher());
         job.setApplyUrl(incoming.applyUrl());
+        // Use the source's original posting date when available; fall back to
+        // now so the field is never null for newly-ingested rows.
+        job.setPostedAt(incoming.postedAt() != null ? incoming.postedAt() : now);
         job.setActive(true);
         job.setFeatured(false);
         job.setExpiresAt(now.plusDays(30));

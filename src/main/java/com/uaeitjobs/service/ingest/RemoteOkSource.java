@@ -121,7 +121,8 @@ public class RemoteOkSource implements JobIngestSource {
                 "full_time",
                 inferExperience(title),
                 url,
-                true // remote_uae = true, that's the whole point of this source
+                true, // remote_uae = true, that's the whole point of this source
+                null  // RemoteOK API does not expose original posting date
         );
     }
 

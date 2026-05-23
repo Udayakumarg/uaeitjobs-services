@@ -49,6 +49,7 @@ public final class JobDTO {
             String skills,
             String linkedinUrl,
             String source,
+            OffsetDateTime postedAt,
             OffsetDateTime createdAt,
             OffsetDateTime updatedAt,
             OffsetDateTime expiresAt,
@@ -74,7 +75,7 @@ public final class JobDTO {
         public JobResponse withMaskedApply() {
             return new JobResponse(id, slug, title, companyName, description, requirements,
                     salaryMin, salaryMax, salaryCurrency, jobType, experienceLevel, locationUae,
-                    skills, null /* linkedinUrl */, source, createdAt, updatedAt, expiresAt,
+                    skills, null /* linkedinUrl */, source, postedAt, createdAt, updatedAt, expiresAt,
                     featured, active, viewCount, visaType, emirate, immediateJoiner, remoteUae,
                     jobCategory, null /* applyUrl */, descriptionSections, descriptionHtml, companyLogoUrl);
         }
