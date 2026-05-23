@@ -151,6 +151,14 @@ public interface JobRepository extends JpaRepository<Job, Long> {
                coalesce(j.description,'') || ' ' ||
                coalesce(j.requirements,''))
                @@ plainto_tsquery('english', :q))
+          and (
+            :publishers = ''
+            or (select bool_or(
+                  coalesce(j.publisher, '')  ilike '%' || t.p || '%'
+                  or coalesce(j.apply_url, '') ilike '%' || t.p || '%'
+                  or (t.p = 'linkedin' and j.linkedin_url is not null)
+                ) from unnest(string_to_array(:publishers, ',')) t(p))
+          )
         order by
           case when :q != ''
                then ts_rank(to_tsvector('english',
@@ -184,6 +192,14 @@ public interface JobRepository extends JpaRepository<Job, Long> {
                coalesce(j.description,'') || ' ' ||
                coalesce(j.requirements,''))
                @@ plainto_tsquery('english', :q))
+          and (
+            :publishers = ''
+            or (select bool_or(
+                  coalesce(j.publisher, '')  ilike '%' || t.p || '%'
+                  or coalesce(j.apply_url, '') ilike '%' || t.p || '%'
+                  or (t.p = 'linkedin' and j.linkedin_url is not null)
+                ) from unnest(string_to_array(:publishers, ',')) t(p))
+          )
         """,
         nativeQuery = true)
     Page<Job> filterMulti(@Param("emirate")        String emirate,
@@ -197,5 +213,6 @@ public interface JobRepository extends JpaRepository<Job, Long> {
                           @Param("salaryMax")      Integer salaryMax,
                           @Param("sortBy")         String sortBy,
                           @Param("q")              String q,
+                          @Param("publishers")     String publishers,
                           Pageable pageable);
 }

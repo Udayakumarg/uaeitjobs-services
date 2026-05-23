@@ -71,11 +71,12 @@ public class JobController {
             @RequestParam(required = false) Integer salaryMax,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String q,
+            @RequestParam(required = false) java.util.List<String> publisher,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "80") int size) {
         return jobService.filterMulti(emirate, category, experienceLevel, jobType,
                 remoteUae, immediateJoiner, postedAfter, salaryMin, salaryMax, sort, q,
-                PageUtil.page(page, size));
+                publisher, PageUtil.page(page, size));
     }
 
     @PostMapping("/jobs")
