@@ -113,18 +113,23 @@ public class UrlJobScraperService {
                 companyFromDomain(url)
         );
 
-        String description = coalesce(
+        String rawDescription = coalesce(
                 metaProp(doc, "og:description"),
                 metaName(doc, "twitter:description"),
                 metaName(doc, "description")
         );
+        // Discard site-level og:description blurbs that are clearly not a job description
+        // (e.g. "Browse all jobs currently live across …" on Avature pages).
+        // Heuristic: if the og:description doesn't mention any word from the job title,
+        // treat it as a generic site description and leave the field blank.
+        String description = isJobDescription(rawDescription, title) ? rawDescription : "";
 
         String location = metaProp(doc, "og:locality");  // sometimes present on ATS pages
 
-        boolean complete = !title.isBlank() && !description.isBlank();
+        boolean hasDescription = !description.isBlank();
+        boolean complete = !title.isBlank() && hasDescription;
         String message = complete ? null
-                : "This page is JavaScript-rendered — the description could not be extracted automatically. "
-                + "Copy it from the careers page and paste it below, then click Import.";
+                : buildIncompleteMessage(doc, title, hasDescription);
 
         return UrlImportDTO.Preview.builder()
                 .title(blankToNull(title))
@@ -274,6 +279,45 @@ public class UrlJobScraperService {
         } catch (Exception e) {
             return "";
         }
+    }
+
+    /**
+     * Returns true if {@code desc} looks like it describes a specific job rather
+     * than a generic site page.
+     *
+     * <p>Many ATS portals (Avature, iCIMS…) set {@code og:description} to a sitewide
+     * blurb like "Browse all jobs currently live across The Emirates Group" which is
+     * not a job description.  We reject it if none of the significant words in the
+     * job title (length ≥ 4) appear in the description — a real description almost
+     * always mentions at least the role name or key skills.
+     */
+    private static boolean isJobDescription(String desc, String title) {
+        if (desc == null || desc.isBlank()) return false;
+        if (title == null || title.isBlank()) return true;  // can't cross-check; keep it
+        String descLower  = desc.toLowerCase();
+        long matchCount = Arrays.stream(title.split("\\s+"))
+                .map(String::toLowerCase)
+                .filter(w -> w.length() >= 4)
+                .filter(descLower::contains)
+                .count();
+        return matchCount >= 1;
+    }
+
+    /**
+     * Builds the user-facing "incomplete" message.  If the page is a confirmed
+     * JS-rendered ATS (detected by the presence of a "loading" placeholder), the
+     * message is tailored to guide the user to copy the description manually.
+     */
+    private static String buildIncompleteMessage(Document doc, String title, boolean hasDescription) {
+        boolean isJsRendered = doc.select("div.job-loading, div[id*=job-loading], div[class*=loading]")
+                .stream().anyMatch(el -> el.text().toLowerCase().contains("loading"));
+        if (isJsRendered || !hasDescription) {
+            return "This careers page loads its content via JavaScript — "
+                    + "the job description could not be extracted automatically."
+                    + (title.isBlank() ? "" : " The title has been filled in for you.")
+                    + " Open the careers page, copy the full description, and paste it below before clicking Import.";
+        }
+        return "Some fields could not be extracted. Review and fill in any missing details below.";
     }
 
     // ── SSRF guard ────────────────────────────────────────────────────────────
