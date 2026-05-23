@@ -13,9 +13,14 @@ RUN mkdir -p /app/uploads
 COPY --from=build /app/target/uaeitjobs-0.0.1-SNAPSHOT.jar app.jar
 
 # Install Chromium and all OS-level libraries it needs to run headlessly.
-# The playwright CLI is bundled inside the fat jar — no separate Node install needed.
-# --with-deps installs both the browser binary and every system library in one step.
-RUN java -cp app.jar com.microsoft.playwright.CLI install --with-deps chromium
+# Spring Boot fat JARs use nested JARs (BOOT-INF/lib/) that the standard -cp flag
+# cannot read.  PropertiesLauncher is Spring Boot's own classloader — it unpacks
+# and loads nested JARs correctly, so the Playwright CLI class is reachable.
+# -Dloader.main sets the class to run; remaining args are forwarded to its main().
+RUN java -Dloader.main=com.microsoft.playwright.CLI \
+         -cp app.jar \
+         org.springframework.boot.loader.launch.PropertiesLauncher \
+         install --with-deps chromium
 
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]
