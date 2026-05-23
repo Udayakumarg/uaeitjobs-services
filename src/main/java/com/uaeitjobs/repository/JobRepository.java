@@ -141,7 +141,7 @@ public interface JobRepository extends JpaRepository<Job, Long> {
           and (:jobTypes = '' or j.job_type         = any(string_to_array(:jobTypes, ',')))
           and (cast(:remoteUae       as boolean) is null or j.remote_uae       = :remoteUae)
           and (cast(:immediateJoiner as boolean) is null or j.immediate_joiner = :immediateJoiner)
-          and (:postedAfter = '' or j.created_at >= cast(:postedAfter as timestamptz))
+          and (:postedAfter = '' or coalesce(j.posted_at, j.created_at) >= cast(:postedAfter as timestamptz))
           and (cast(:salaryMin as numeric) is null
                or coalesce(j.salary_min, j.salary_max) >= cast(:salaryMin as numeric))
           and (cast(:salaryMax as numeric) is null
@@ -182,7 +182,7 @@ public interface JobRepository extends JpaRepository<Job, Long> {
           and (:jobTypes = '' or j.job_type         = any(string_to_array(:jobTypes, ',')))
           and (cast(:remoteUae       as boolean) is null or j.remote_uae       = :remoteUae)
           and (cast(:immediateJoiner as boolean) is null or j.immediate_joiner = :immediateJoiner)
-          and (:postedAfter = '' or j.created_at >= cast(:postedAfter as timestamptz))
+          and (:postedAfter = '' or coalesce(j.posted_at, j.created_at) >= cast(:postedAfter as timestamptz))
           and (cast(:salaryMin as numeric) is null
                or coalesce(j.salary_min, j.salary_max) >= cast(:salaryMin as numeric))
           and (cast(:salaryMax as numeric) is null
