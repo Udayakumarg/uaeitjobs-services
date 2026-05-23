@@ -89,10 +89,12 @@ public class JobSeekerService {
         return applicationMapper.toResponse(saved);
     }
 
+    @Transactional(readOnly = true)
     public Page<ApplicationDTO.Response> applications(User user, Pageable pageable) {
         return applicationRepository.findByUser(user, pageable).map(applicationMapper::toResponse);
     }
 
+    @Transactional(readOnly = true)
     public List<SavedJobDTO.Response> savedJobs(User user) {
         return savedJobRepository.findByUser(user).stream()
                 .map(s -> new SavedJobDTO.Response(s.getId(), jobMapper.toResponse(s.getJob()), s.getSavedAt()))
