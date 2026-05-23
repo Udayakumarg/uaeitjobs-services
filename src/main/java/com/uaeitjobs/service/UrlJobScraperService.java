@@ -55,6 +55,7 @@ public class UrlJobScraperService {
     );
 
     private final ObjectMapper objectMapper;
+    private final PlaywrightScraperService playwrightScraperService;
 
     // ── Public entry point ────────────────────────────────────────────────────
 
@@ -76,7 +77,46 @@ public class UrlJobScraperService {
                     .timeout(12_000)
                     .followRedirects(true)
                     .get();
-            return parseDocument(doc, url);
+
+            // First attempt: parse the static (non-JS-rendered) HTML
+            UrlImportDTO.Preview staticPreview = parseDocument(doc, url);
+            if (staticPreview.isComplete()) return staticPreview;
+
+            // Playwright fallback — only launched when the static HTML shows a JS-rendered
+            // loading placeholder (e.g. Avature, Workday web views, iCIMS).
+            // The Chromium process is opened on-demand and destroyed immediately after the
+            // single fetch — zero idle memory cost between calls.
+            if (isJsRendered(doc)) {
+                log.info("Playwright: JS-rendered page detected — launching Chromium for {}", url);
+                String rendered = playwrightScraperService.fetchRenderedHtml(url);
+                if (rendered != null) {
+                    Document renderedDoc = Jsoup.parse(rendered, url);
+
+                    // A. JSON-LD may be injected dynamically (Workday, some Avature configs)
+                    UrlImportDTO.Preview ldPreview = tryJsonLd(renderedDoc, url);
+                    if (ldPreview != null && ldPreview.isComplete()) return ldPreview;
+
+                    // B. ATS-specific CSS selectors for the rendered description block
+                    String renderedDesc = extractRenderedDescription(renderedDoc);
+                    if (!renderedDesc.isBlank()) {
+                        boolean complete = staticPreview.getTitle() != null
+                                && staticPreview.getCompanyName() != null;
+                        return UrlImportDTO.Preview.builder()
+                                .title(staticPreview.getTitle())
+                                .companyName(staticPreview.getCompanyName())
+                                .description(renderedDesc)
+                                .locationUae(staticPreview.getLocationUae())
+                                .applyUrl(url)
+                                .complete(complete)
+                                .message(complete ? null
+                                        : "Review and fill in any missing fields below.")
+                                .build();
+                    }
+                    log.debug("Playwright: description still empty after rendering — returning static result for {}", url);
+                }
+            }
+
+            return staticPreview;
         } catch (ValidationException ve) {
             throw ve;
         } catch (Exception ex) {
@@ -304,14 +344,72 @@ public class UrlJobScraperService {
     }
 
     /**
-     * Builds the user-facing "incomplete" message.  If the page is a confirmed
-     * JS-rendered ATS (detected by the presence of a "loading" placeholder), the
-     * message is tailored to guide the user to copy the description manually.
+     * Returns {@code true} when the static HTML contains a JS-rendered loading
+     * placeholder — the page body will be populated by client-side JavaScript and
+     * Jsoup can only see the shell.  This triggers the Playwright fallback in
+     * {@link #scrape}.
+     *
+     * <p>Matches both text-bearing divs ("Loading…") and empty spinner containers
+     * ({@code <div class="job-loading"></div>}).</p>
+     */
+    private static boolean isJsRendered(Document doc) {
+        return doc.select(
+                        "div.job-loading, "
+                        + "div[id*='job-loading'], "
+                        + "[class*='job-loading'], "
+                        + "[id*='loading-container'], "
+                        + "[data-loading='true']")
+                .stream().anyMatch(el -> {
+                    String txt = el.text().toLowerCase();
+                    return txt.contains("loading") || txt.isEmpty(); // empty = spinner-only div
+                });
+    }
+
+    /**
+     * Tries a prioritised list of ATS-specific CSS selectors on a fully rendered
+     * (Playwright) document to locate the job description text.
+     *
+     * <p>Selectors are ordered from most specific to most general.  The first
+     * element whose visible text is at least 150 characters is returned, avoiding
+     * false positives from short header/label elements.</p>
+     */
+    private static String extractRenderedDescription(Document doc) {
+        String[] selectors = {
+                "[itemprop='description']",              // Schema.org structured data
+                "[class*='job-description']",            // generic ATS pattern
+                "[class*='jobDescription']",
+                "[id*='job-description']",
+                "[class*='position-description']",       // Avature / SAP SF
+                "[class*='jobdetail']",                  // Avature job detail block
+                "[class*='requisition-description']",    // Taleo / Oracle Recruiting
+                "[class*='job-details-description']",
+                "[class*='job-body']",
+                "[class*='jobBody']",
+                "[class*='job-content']",
+                "[class*='jobContent']",
+                "[class*='job-details']",
+                "[class*='jobDetails']",
+                "[id*='job-details']",
+                "[id*='position-details']",
+        };
+        for (String sel : selectors) {
+            try {
+                Element el = doc.selectFirst(sel);
+                if (el != null) {
+                    String text = el.text().strip();
+                    if (text.length() >= 150) return text;
+                }
+            } catch (Exception ignored) { /* malformed selector guard */ }
+        }
+        return "";
+    }
+
+    /**
+     * Builds the user-facing "incomplete" message shown when neither the static
+     * HTML nor the Playwright fallback could extract the full job details.
      */
     private static String buildIncompleteMessage(Document doc, String title, boolean hasDescription) {
-        boolean isJsRendered = doc.select("div.job-loading, div[id*=job-loading], div[class*=loading]")
-                .stream().anyMatch(el -> el.text().toLowerCase().contains("loading"));
-        if (isJsRendered || !hasDescription) {
+        if (isJsRendered(doc) || !hasDescription) {
             return "This careers page loads its content via JavaScript — "
                     + "the job description could not be extracted automatically."
                     + (title.isBlank() ? "" : " The title has been filled in for you.")

@@ -106,6 +106,15 @@
             <artifactId>jsoup</artifactId>
             <version>1.18.1</version>
         </dependency>
+        <!-- Playwright: headless Chromium for JS-rendered job pages (Avature, iCIMS…).
+             Browser is launched on-demand and closed immediately after each scrape;
+             zero idle memory cost. Chromium binary installed into the Docker image
+             via the playwright CLI bundled in this fat jar. -->
+        <dependency>
+            <groupId>com.microsoft.playwright</groupId>
+            <artifactId>playwright</artifactId>
+            <version>1.49.0</version>
+        </dependency>
         <!-- Caffeine: user-lookup cache + rate-limiter fallback buckets -->
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
