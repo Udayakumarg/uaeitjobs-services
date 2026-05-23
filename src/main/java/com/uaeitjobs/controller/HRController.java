@@ -1,6 +1,7 @@
 package com.uaeitjobs.controller;
 
 import com.uaeitjobs.dto.*;
+import com.uaeitjobs.exception.ValidationException;
 import com.uaeitjobs.service.*;
 import com.uaeitjobs.util.PageUtil;
 import jakarta.validation.Valid;
@@ -73,6 +74,11 @@ public class HRController {
     @PostMapping("/hr/jobs/import-preview")
     public UrlImportDTO.Preview importPreview(@Valid @RequestBody UrlImportDTO.Request request) {
         String url = request.url().strip();
+
+        // Duplicate check BEFORE any scraping or Playwright rendering
+        if (jobService.existsByApplyUrl(url)) {
+            throw new ValidationException("A job with this URL has already been posted");
+        }
 
         if (LINKEDIN_JOB_URL.matcher(url).matches()) {
             // LinkedIn: reuse the existing scraper that knows LinkedIn's HTML structure

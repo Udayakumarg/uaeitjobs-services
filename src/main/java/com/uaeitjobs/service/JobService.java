@@ -142,6 +142,11 @@ public class JobService {
     }
 
     @Transactional
+    /** Fast pre-scrape duplicate check used by the import-preview endpoint. */
+    public boolean existsByApplyUrl(String url) {
+        return url != null && !url.isBlank() && jobRepository.existsByApplyUrl(url.strip());
+    }
+
     public JobDTO.JobResponse create(JobDTO.JobRequest request, User user) {
         return create(request, user, "manual");
     }
@@ -152,7 +157,7 @@ public class JobService {
             throw new ValidationException("Verify email before posting jobs");
         }
         subscriptionService.assertCanPost(user);
-        // Duplicate guard — block re-importing the same job URL
+        // Safety-net duplicate guard (primary check is at import-preview time)
         String applyUrl = request.applyUrl() != null ? request.applyUrl().strip() : null;
         if (applyUrl != null && !applyUrl.isBlank() && jobRepository.existsByApplyUrl(applyUrl)) {
             throw new ValidationException("A job with this URL has already been posted");
