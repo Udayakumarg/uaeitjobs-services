@@ -3,6 +3,7 @@ package com.uaeitjobs.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uaeitjobs.dto.JobDTO;
+import com.uaeitjobs.dto.PublisherDTO;
 import com.uaeitjobs.dto.StatsDTO;
 import com.uaeitjobs.entity.Job;
 import com.uaeitjobs.entity.User;
@@ -196,6 +197,17 @@ public class JobService {
 
     public List<String> skills(String query) {
         return jobRepository.findSkills(query == null ? "" : query);
+    }
+
+    /**
+     * Returns normalised publisher names that have more than {@code minCount}
+     * active jobs, ordered by descending job count.
+     * Callers should pass {@code minCount = 5} for the Browse page filter.
+     */
+    public List<PublisherDTO> activePublishers(int minCount) {
+        return jobRepository.findActivePublishers(minCount).stream()
+                .map(p -> new PublisherDTO(p.getKey(), p.getLabel(), p.getCnt()))
+                .toList();
     }
 
     public Job ownedJob(Long id, User user) {

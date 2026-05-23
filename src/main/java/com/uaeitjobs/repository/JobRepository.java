@@ -116,6 +116,67 @@ public interface JobRepository extends JpaRepository<Job, Long> {
     long countActiveCompanies();
 
     /**
+     * Projection result for {@link #findActivePublishers}.
+     * Column aliases in the native SQL must match these getter names exactly.
+     */
+    interface PublisherCount {
+        String getKey();
+        String getLabel();
+        long getCnt();
+    }
+
+    /**
+     * Returns distinct, normalised publisher names whose active job count exceeds
+     * {@code minCount}, ordered by count descending.
+     *
+     * <p>Raw JSearch publisher strings are inconsistent ("LinkedIn", "LinkedIn Jobs",
+     * "linkedin.com" etc.).  The inner query normalises them with CASE … LIKE so all
+     * variations collapse into a single canonical (key, label) pair before grouping.
+     * Unknown publishers fall through to a lower-cased, trimmed ELSE branch.
+     *
+     * <p>The {@code key} value is what the frontend sends as the {@code publisher}
+     * query param; the existing {@code filterMulti} SQL already matches it via
+     * {@code publisher ILIKE '%' || key || '%'}, so no changes to the filter query
+     * are needed when new job boards appear.
+     */
+    @Query(value = """
+        SELECT key, label, count(*) AS cnt
+        FROM (
+          SELECT
+            CASE
+              WHEN lower(j.publisher) LIKE '%linkedin%'     THEN 'linkedin'
+              WHEN lower(j.publisher) LIKE '%indeed%'       THEN 'indeed'
+              WHEN lower(j.publisher) LIKE '%bayt%'         THEN 'bayt'
+              WHEN lower(j.publisher) LIKE '%gulftalent%'   THEN 'gulftalent'
+              WHEN lower(j.publisher) LIKE '%naukrigulf%'   THEN 'naukrigulf'
+              WHEN lower(j.publisher) LIKE '%glassdoor%'    THEN 'glassdoor'
+              WHEN lower(j.publisher) LIKE '%ziprecruiter%' THEN 'ziprecruiter'
+              WHEN lower(j.publisher) LIKE '%monster%'      THEN 'monster'
+              ELSE lower(trim(j.publisher))
+            END AS key,
+            CASE
+              WHEN lower(j.publisher) LIKE '%linkedin%'     THEN 'LinkedIn'
+              WHEN lower(j.publisher) LIKE '%indeed%'       THEN 'Indeed'
+              WHEN lower(j.publisher) LIKE '%bayt%'         THEN 'Bayt'
+              WHEN lower(j.publisher) LIKE '%gulftalent%'   THEN 'GulfTalent'
+              WHEN lower(j.publisher) LIKE '%naukrigulf%'   THEN 'Naukrigulf'
+              WHEN lower(j.publisher) LIKE '%glassdoor%'    THEN 'Glassdoor'
+              WHEN lower(j.publisher) LIKE '%ziprecruiter%' THEN 'ZipRecruiter'
+              WHEN lower(j.publisher) LIKE '%monster%'      THEN 'Monster'
+              ELSE trim(j.publisher)
+            END AS label
+          FROM jobs j
+          WHERE j.is_active = true
+            AND j.publisher IS NOT NULL
+            AND j.publisher <> ''
+        ) sub
+        GROUP BY key, label
+        HAVING count(*) > :minCount
+        ORDER BY cnt DESC
+        """, nativeQuery = true)
+    java.util.List<PublisherCount> findActivePublishers(@Param("minCount") int minCount);
+
+    /**
      * Full multi-select filter query. Accepts comma-joined strings for each
      * multi-select dimension (empty string = no filter). Supports postedAfter
      * (ISO-8601 timestamp or empty string), salary range, and sort direction.

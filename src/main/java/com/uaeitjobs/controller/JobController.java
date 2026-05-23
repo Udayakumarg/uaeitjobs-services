@@ -1,6 +1,7 @@
 package com.uaeitjobs.controller;
 
 import com.uaeitjobs.dto.JobDTO;
+import com.uaeitjobs.dto.PublisherDTO;
 import com.uaeitjobs.dto.StatsDTO;
 import com.uaeitjobs.service.CurrentUserService;
 import com.uaeitjobs.service.JobService;
@@ -99,5 +100,19 @@ public class JobController {
     @GetMapping("/stats")
     public StatsDTO stats() {
         return jobService.stats();
+    }
+
+    /**
+     * Returns job-board publisher names that have more than {@code minCount}
+     * active jobs, sorted by descending count.  The frontend uses this to
+     * populate the Source filter dynamically so new job boards appear
+     * automatically once they accumulate enough listings.
+     *
+     * @param minCount minimum job count threshold (default 5)
+     */
+    @GetMapping("/jobs/publishers")
+    public java.util.List<PublisherDTO> publishers(
+            @RequestParam(defaultValue = "5") int minCount) {
+        return jobService.activePublishers(minCount);
     }
 }
