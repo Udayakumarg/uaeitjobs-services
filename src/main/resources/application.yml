@@ -101,6 +101,10 @@ app:
     max-output-tokens: ${LLM_MAX_OUTPUT_TOKENS:2048}
     # 0 disables throttling. Set to 13000 for Gemini free tier (5 RPM).
     min-interval-ms:   ${LLM_MIN_INTERVAL_MS:0}
+  rate-limit:
+    # Set RATE_LIMIT_ENABLED=false in docker-compose .env to disable all
+    # rate limiting (useful in early production while traffic is low).
+    enabled: ${RATE_LIMIT_ENABLED:true}
   cookie:
     # Set COOKIE_SECURE=false and COOKIE_SAME_SITE=Lax for local development
     # when the frontend (localhost:5173) and backend (localhost:8080) are on

@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.http.MediaType;
@@ -52,6 +53,9 @@ public class RateLimitingInterceptor implements HandlerInterceptor {
             Bandwidth.classic(5,  Refill.greedy(5,  Duration.ofMinutes(1)));
     private static final Bandwidth PUBLIC_BANDWIDTH =
             Bandwidth.classic(60, Refill.greedy(60, Duration.ofMinutes(1)));
+
+    @Value("${app.rate-limit.enabled:true}")
+    private boolean enabled;
 
     /** Bounded, TTL-evicting cache: max 10 000 keys, entries expire 5 min after last write. */
     private final Cache<String, Bucket> buckets = Caffeine.newBuilder()
@@ -117,6 +121,8 @@ public class RateLimitingInterceptor implements HandlerInterceptor {
     public boolean preHandle(HttpServletRequest request,
                              HttpServletResponse response,
                              Object handler) throws Exception {
+
+        if (!enabled) return true;
 
         String  uri    = request.getRequestURI();
         boolean isAuth = isAuthEndpoint(uri);
