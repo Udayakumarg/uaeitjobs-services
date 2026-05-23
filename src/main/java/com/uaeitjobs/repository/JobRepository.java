@@ -129,19 +129,26 @@ public interface JobRepository extends JpaRepository<Job, Long> {
      * Returns distinct, normalised publisher names whose active job count exceeds
      * {@code minCount}, ordered by count descending.
      *
-     * <p>Raw JSearch publisher strings are inconsistent ("LinkedIn", "LinkedIn Jobs",
-     * "linkedin.com" etc.).  The inner query normalises them with CASE … LIKE so all
-     * variations collapse into a single canonical (key, label) pair before grouping.
-     * Unknown publishers fall through to a lower-cased, trimmed ELSE branch.
+     * <p>Two sources are unioned before grouping:
+     * <ol>
+     *   <li>Jobs with a non-blank {@code publisher} column (JSearch aggregates
+     *       carry this: "Indeed", "Bayt", "BeBee", etc.).  RemoteOK is excluded
+     *       here — it is an aggregator, not a job board users recognise.
+     *   <li>Jobs that arrived via a {@code linkedin_url} but have no
+     *       {@code publisher} value (LinkedIn import, LinkedIn scraper).  These
+     *       are counted separately so LinkedIn always appears in the list even
+     *       when JSearch does not tag the publisher field explicitly.
+     * </ol>
      *
-     * <p>The {@code key} value is what the frontend sends as the {@code publisher}
-     * query param; the existing {@code filterMulti} SQL already matches it via
-     * {@code publisher ILIKE '%' || key || '%'}, so no changes to the filter query
-     * are needed when new job boards appear.
+     * <p>Raw strings are normalised via CASE … LIKE so all variants collapse into
+     * one canonical {@code (key, label)} pair.  The {@code key} is what the
+     * frontend sends as the {@code publisher} query param; the existing
+     * {@code filterMulti} ILIKE matching handles it automatically.
      */
     @Query(value = """
         SELECT key, label, count(*) AS cnt
         FROM (
+          -- Branch 1: jobs with an explicit publisher value (RemoteOK excluded)
           SELECT
             CASE
               WHEN lower(j.publisher) LIKE '%linkedin%'     THEN 'linkedin'
@@ -152,6 +159,7 @@ public interface JobRepository extends JpaRepository<Job, Long> {
               WHEN lower(j.publisher) LIKE '%glassdoor%'    THEN 'glassdoor'
               WHEN lower(j.publisher) LIKE '%ziprecruiter%' THEN 'ziprecruiter'
               WHEN lower(j.publisher) LIKE '%monster%'      THEN 'monster'
+              WHEN lower(j.publisher) LIKE '%bebee%'        THEN 'bebee'
               ELSE lower(trim(j.publisher))
             END AS key,
             CASE
@@ -163,12 +171,23 @@ public interface JobRepository extends JpaRepository<Job, Long> {
               WHEN lower(j.publisher) LIKE '%glassdoor%'    THEN 'Glassdoor'
               WHEN lower(j.publisher) LIKE '%ziprecruiter%' THEN 'ZipRecruiter'
               WHEN lower(j.publisher) LIKE '%monster%'      THEN 'Monster'
+              WHEN lower(j.publisher) LIKE '%bebee%'        THEN 'BeBee'
               ELSE trim(j.publisher)
             END AS label
           FROM jobs j
           WHERE j.is_active = true
-            AND j.publisher IS NOT NULL
-            AND j.publisher <> ''
+            AND j.publisher IS NOT NULL AND j.publisher <> ''
+            AND lower(j.publisher) NOT LIKE '%remoteok%'
+
+          UNION ALL
+
+          -- Branch 2: LinkedIn jobs that arrived via linkedin_url without a publisher tag
+          SELECT 'linkedin' AS key, 'LinkedIn' AS label
+          FROM jobs j
+          WHERE j.is_active = true
+            AND j.linkedin_url IS NOT NULL
+            AND (j.publisher IS NULL OR j.publisher = ''
+                 OR lower(j.publisher) NOT LIKE '%linkedin%')
         ) sub
         GROUP BY key, label
         HAVING count(*) > :minCount
