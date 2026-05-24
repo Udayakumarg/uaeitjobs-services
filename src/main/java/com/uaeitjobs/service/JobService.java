@@ -101,6 +101,7 @@ public class JobService {
                                                 String sortBy,
                                                 String q,
                                                 java.util.List<String> publishers,
+                                                String company,
                                                 Pageable pageable) {
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         boolean  authed   = SecurityUtils.isAuthenticated();
@@ -117,6 +118,7 @@ public class JobService {
                 blankToNull(sortBy) == null ? "newest" : sortBy,
                 blankToEmpty(q),
                 joinOrEmpty(publishers),
+                blankToEmpty(company),
                 unsorted
         ).map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
     }
