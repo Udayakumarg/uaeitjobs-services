@@ -51,6 +51,7 @@ public class HRService {
         return profileRepository.findByUser(user).map(this::toResponse).orElseThrow(() -> new ResourceNotFoundException("Profile not found"));
     }
 
+    @Transactional(readOnly = true)
     public Page<ApplicationDTO.Response> applicants(Long jobId, User user, Pageable pageable) {
         Job job = jobService.ownedJob(jobId, user);
         return applicationRepository.findByJob(job, pageable).map(applicationMapper::toResponse);
