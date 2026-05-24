@@ -17,14 +17,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class HRService {
     private final HRProfileRepository profileRepository;
+    private final JobSeekerProfileRepository seekerProfileRepository;
     private final ApplicationRepository applicationRepository;
     private final LinkedInImportRepository linkedInImportRepository;
     private final JobService jobService;
@@ -54,12 +57,30 @@ public class HRService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ApplicationDTO.Response> applicants(Long jobId, User user, Pageable pageable) {
+    public Page<ApplicationDTO.HrView> applicants(Long jobId, User user, Pageable pageable) {
         Job job = jobService.ownedJob(jobId, user);
         // ApplicationEntity uses 'appliedAt', not 'createdAt' — override the default sort
         Pageable byAppliedAt = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
                 Sort.by(Sort.Direction.DESC, "appliedAt"));
-        return applicationRepository.findByJob(job, byAppliedAt).map(applicationMapper::toResponse);
+        Page<ApplicationEntity> appPage = applicationRepository.findByJob(job, byAppliedAt);
+
+        // Batch-load seeker profiles for all applicants on this page in a single query
+        List<User> applicants = appPage.getContent().stream().map(ApplicationEntity::getUser).toList();
+        Map<Long, JobSeekerProfile> profileMap = seekerProfileRepository.findByUserIn(applicants).stream()
+                .collect(Collectors.toMap(p -> p.getUser().getId(), p -> p));
+
+        return appPage.map(app -> toHrView(app, profileMap.get(app.getUser().getId())));
+    }
+
+    private ApplicationDTO.HrView toHrView(ApplicationEntity app, JobSeekerProfile profile) {
+        ApplicationDTO.Response base = applicationMapper.toResponse(app);
+        return new ApplicationDTO.HrView(
+                base.id(), base.job(), base.applicant(), base.coverLetter(), base.appliedAt(), base.status(),
+                profile != null ? profile.getHeadline() : null,
+                profile != null ? profile.getYearsExperience() : null,
+                profile != null ? profile.getSkills() : null,
+                profile != null ? profile.getVisaStatus() : null,
+                profile != null ? profile.getCvUrl() : null);
     }
 
     @Transactional

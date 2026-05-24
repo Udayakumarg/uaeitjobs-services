@@ -42,7 +42,7 @@ public class HRController {
     }
 
     @GetMapping("/hr/jobs/{id}/applicants")
-    public Page<ApplicationDTO.Response> applicants(@PathVariable Long id, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+    public Page<ApplicationDTO.HrView> applicants(@PathVariable Long id, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
         return hrService.applicants(id, currentUserService.get(), PageUtil.page(page, size));
     }
 
