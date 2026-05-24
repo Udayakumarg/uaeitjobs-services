@@ -9,7 +9,9 @@ import com.uaeitjobs.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -54,7 +56,10 @@ public class HRService {
     @Transactional(readOnly = true)
     public Page<ApplicationDTO.Response> applicants(Long jobId, User user, Pageable pageable) {
         Job job = jobService.ownedJob(jobId, user);
-        return applicationRepository.findByJob(job, pageable).map(applicationMapper::toResponse);
+        // ApplicationEntity uses 'appliedAt', not 'createdAt' — override the default sort
+        Pageable byAppliedAt = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                Sort.by(Sort.Direction.DESC, "appliedAt"));
+        return applicationRepository.findByJob(job, byAppliedAt).map(applicationMapper::toResponse);
     }
 
     @Transactional

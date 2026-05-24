@@ -11,7 +11,9 @@ import com.uaeitjobs.mapper.JobMapper;
 import com.uaeitjobs.repository.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -93,7 +95,10 @@ public class JobSeekerService {
 
     @Transactional(readOnly = true)
     public Page<ApplicationDTO.Response> applications(User user, Pageable pageable) {
-        return applicationRepository.findByUser(user, pageable).map(applicationMapper::toResponse);
+        // ApplicationEntity uses 'appliedAt', not 'createdAt' — override the default sort
+        Pageable byAppliedAt = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                Sort.by(Sort.Direction.DESC, "appliedAt"));
+        return applicationRepository.findByUser(user, byAppliedAt).map(applicationMapper::toResponse);
     }
 
     @Transactional(readOnly = true)
