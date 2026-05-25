@@ -41,6 +41,6 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd /opt/qten
+            cd /opt/apps
             docker compose pull uaeitjobs-backend
             docker compose up -d --no-deps --no-build uaeitjobs-backend
