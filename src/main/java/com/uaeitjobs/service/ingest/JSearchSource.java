@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -117,7 +118,9 @@ public class JSearchSource {
     }
 
     private List<IngestedJob> fetchPage(String keyword, int page) {
-        String url = UriComponentsBuilder
+        // Build a properly-encoded URI (avoids spaces/special chars in keyword
+        // causing issues when RestTemplate creates the underlying java.net.URI).
+        URI uri = UriComponentsBuilder
                 .fromUriString("https://jsearch.p.rapidapi.com/search-v2")
                 .queryParam("query", buildQuery(keyword))
                 .queryParam("page", page)
@@ -125,8 +128,9 @@ public class JSearchSource {
                 .queryParam("country", country)
                 .queryParam("language", "en")       // force English content
                 .queryParam("date_posted", "month")
-                .build(false)
-                .toUriString();
+                .encode()   // encode each component individually (handles spaces etc.)
+                .build()
+                .toUri();
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("X-RapidAPI-Key", rapidapiKey);
@@ -134,20 +138,40 @@ public class JSearchSource {
         headers.set("Accept", "application/json");
 
         ResponseEntity<JsonNode> response = http.exchange(
-                url, HttpMethod.GET, new HttpEntity<>(headers), JsonNode.class);
+                uri, HttpMethod.GET, new HttpEntity<>(headers), JsonNode.class);
         JsonNode body = response.getBody();
-        if (body == null) return List.of();
+        if (body == null) {
+            log.warn("JSearch keyword='{}' page={}: empty response body", keyword, page);
+            return List.of();
+        }
+
+        // Check for API-level errors (quota exceeded, invalid key, rate-limit, …).
+        // JSearch returns HTTP 200 even for these; the "status" field signals failure.
+        String status = body.has("status") ? body.get("status").asText("") : "";
+        if (!"OK".equalsIgnoreCase(status)) {
+            String msg = body.has("message") ? body.get("message").asText("") : body.toPrettyString();
+            log.warn("JSearch keyword='{}' page={}: API error — status='{}' message='{}'",
+                    keyword, page, status,
+                    msg.length() > 300 ? msg.substring(0, 300) + "…" : msg);
+            return List.of();
+        }
 
         // /search-v2 returns { status, data: { jobs: [...] } }
         // /search   returned { status, data: [...] } — keep both paths.
         JsonNode dataNode = body.get("data");
         JsonNode jobsArr;
-        if (dataNode == null) return List.of();
+        if (dataNode == null || dataNode.isNull()) {
+            log.warn("JSearch keyword='{}' page={}: 'data' field missing/null. Full body: {}",
+                    keyword, page, body.toPrettyString().substring(0, Math.min(500, body.toPrettyString().length())));
+            return List.of();
+        }
         if (dataNode.isArray()) {
-            jobsArr = dataNode;                                  // legacy /search
+            jobsArr = dataNode;                                  // /search and /search-v2
         } else if (dataNode.has("jobs") && dataNode.get("jobs").isArray()) {
-            jobsArr = dataNode.get("jobs");                      // /search-v2
+            jobsArr = dataNode.get("jobs");                      // /search-v2 nested variant
         } else {
+            log.warn("JSearch keyword='{}' page={}: unexpected 'data' shape: {}",
+                    keyword, page, dataNode.toPrettyString().substring(0, Math.min(300, dataNode.toPrettyString().length())));
             return List.of();
         }
 
@@ -155,6 +179,10 @@ public class JSearchSource {
         for (JsonNode node : jobsArr) {
             IngestedJob job = mapOne(node);
             if (job != null) mapped.add(job);
+        }
+        if (mapped.isEmpty() && jobsArr.size() > 0) {
+            log.warn("JSearch keyword='{}' page={}: {} job(s) returned but all dropped by mapOne "
+                    + "(job_id/job_title/job_apply_link null for every entry).", keyword, page, jobsArr.size());
         }
         return mapped;
     }
