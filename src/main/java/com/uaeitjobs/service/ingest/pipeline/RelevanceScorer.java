@@ -25,12 +25,21 @@ public class RelevanceScorer {
                     "mobile|ios|android|architect|engineer|developer|programmer)\\b"
     );
 
+    // Narrowed to patterns that are UNAMBIGUOUSLY non-IT.
+    // Removed: delivery (→ "Delivery Manager" is a common UAE IT PM role),
+    //          driver (→ "driver" appears in many tech contexts),
+    //          sales executive/manager/associate (→ pre-sales, solution sales are IT roles),
+    //          account executive (→ technical account managers are IT),
+    //          accountant (→ FinTech / ERP roles),
+    //          insurance/underwriter/claims (→ InsurTech / FinTech roles),
+    //          warehouse (→ "Warehouse Management System" roles exist).
     private static final Pattern STRONG_NEGATIVE = Pattern.compile(
-            "(?i)\\b(insurance|underwriter|claims|sales executive|sales manager|sales associate|" +
-                    "account executive|accountant|cashier|receptionist|teller|nurse|pharmacist|" +
-                    "real estate|recruiter|talent acquisition|civil engineer|mechanical engineer|" +
-                    "electrical engineer|driver|delivery|warehouse|chef|cook|waiter|barista|" +
-                    "store manager|retail manager|housekeep|lawyer|paralegal|teacher|tutor)\\b"
+            "(?i)\\b(cashier|receptionist|bank teller|nurse|pharmacist|" +
+                    "real estate agent|recruiter|talent acquisition|" +
+                    "civil engineer|mechanical engineer|electrical engineer|" +
+                    "truck driver|delivery driver|delivery boy|food delivery|" +
+                    "chef|cook|waiter|barista|housekeep|" +
+                    "lawyer|paralegal|teacher|tutor)\\b"
     );
 
     private static final Pattern UAE_LOCATION = Pattern.compile(
