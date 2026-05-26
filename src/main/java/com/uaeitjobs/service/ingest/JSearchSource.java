@@ -56,6 +56,14 @@ public class JSearchSource {
     private int pages;
 
     /**
+     * JSearch date_posted filter. Use "3days" for daily cron runs (far fewer
+     * duplicates, smaller responses). Use "month" only for an initial backfill.
+     * Valid values: today | 3days | week | month
+     */
+    @Value("${app.ingest.jsearch.date-posted:3days}")
+    private String datePosted;
+
+    /**
      * Comma-separated list of site domains to constrain the JSearch query
      * with Google's {@code site:} operator (e.g.
      * {@code linkedin.com,bayt.com,gulftalent.com,naukrigulf.com,indeed.com}).
@@ -127,7 +135,7 @@ public class JSearchSource {
                 .queryParam("num_pages", 1)
                 .queryParam("country", country)
                 .queryParam("language", "en")       // force English content
-                .queryParam("date_posted", "month")
+                .queryParam("date_posted", datePosted)
                 .encode()   // encode each component individually (handles spaces etc.)
                 .build()
                 .toUri();
