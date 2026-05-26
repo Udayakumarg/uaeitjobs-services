@@ -118,7 +118,11 @@ public class JobIngestPipeline {
     @Transactional
     public Outcome process(IngestedJob incoming) {
         // ── 1. Hard reject ────────────────────────────────────────
-        if (scorer.hardReject(incoming.title(), incoming.locationUae(), null, incoming.description())) {
+        // Always pass "AE" as country — this is a UAE-only platform and every
+        // ingested job is implicitly in the UAE. Without this, jobs where the
+        // description doesn't explicitly mention "UAE/Dubai" (e.g. short JSearch
+        // v2 descriptions) were being hard-rejected by the UAE-location check.
+        if (scorer.hardReject(incoming.title(), incoming.locationUae(), "AE", incoming.description())) {
             return new Outcome.Rejected(Stage.HARD, "non-UAE or blocklisted title");
         }
         if (!isPublisherAllowed(incoming)) {
