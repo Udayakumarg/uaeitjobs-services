@@ -2,6 +2,7 @@ package com.uaeitjobs.controller;
 
 import com.uaeitjobs.dto.AdminDTO;
 import com.uaeitjobs.entity.IngestRunLog;
+import com.uaeitjobs.entity.UserType;
 import com.uaeitjobs.repository.IngestRunLogRepository;
 import com.uaeitjobs.service.AdminService;
 import com.uaeitjobs.service.CurrentUserService;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
 
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -49,6 +51,25 @@ public class AdminController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteUser(@PathVariable Long id) {
         adminService.deleteUser(id);
+    }
+
+    /** Create a new user of any type (including admin) — pre-verified, no email required. */
+    @PostMapping("/users")
+    @ResponseStatus(HttpStatus.CREATED)
+    public Map<String, Object> createUser(@RequestBody Map<String, String> body) {
+        String email    = body.get("email");
+        String password = body.get("password");
+        String typeStr  = body.getOrDefault("userType", "admin");
+        UserType userType;
+        try { userType = UserType.valueOf(typeStr); }
+        catch (IllegalArgumentException e) { throw new com.uaeitjobs.exception.ValidationException("Invalid userType: " + typeStr); }
+        var user = adminService.createUser(email, password, userType);
+        var result = new LinkedHashMap<String, Object>();
+        result.put("id",       user.getId());
+        result.put("email",    user.getEmail());
+        result.put("userType", user.getUserType().name());
+        result.put("verified", user.isVerified());
+        return result;
     }
 
     /**
