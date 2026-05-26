@@ -76,6 +76,16 @@ public class JobIngestService {
 
     /** Per-cron run: keyword-driven JSearch first, then the legacy sources. */
     public Map<String, Object> runAll() {
+        // Close any orphaned "running" rows left by a previous restart/crash.
+        OffsetDateTime staleThreshold = OffsetDateTime.now().minusMinutes(10);
+        runLogRepo.findAllByFinishedAtIsNull().stream()
+                .filter(r -> r.getStartedAt().isBefore(staleThreshold))
+                .forEach(r -> {
+                    r.setFinishedAt(OffsetDateTime.now());
+                    r.setError("stale — process was interrupted");
+                    runLogRepo.save(r);
+                });
+
         LinkedHashMap<String, Object> report = new LinkedHashMap<>();
 
         // ── JSearch (keyword rotation, rate-limited) ──────────
