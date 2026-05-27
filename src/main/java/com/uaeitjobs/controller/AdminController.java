@@ -1,12 +1,14 @@
 package com.uaeitjobs.controller;
 
 import com.uaeitjobs.dto.AdminDTO;
+import com.uaeitjobs.dto.ExternalIngestRequest;
 import com.uaeitjobs.entity.IngestRunLog;
 import com.uaeitjobs.entity.UserType;
 import com.uaeitjobs.repository.IngestRunLogRepository;
 import com.uaeitjobs.service.AdminService;
 import com.uaeitjobs.service.CurrentUserService;
 import com.uaeitjobs.service.DemoJobSeedService;
+import com.uaeitjobs.service.ingest.IngestedJob;
 import com.uaeitjobs.service.ingest.JobIngestService;
 import com.uaeitjobs.util.PageUtil;
 import lombok.RequiredArgsConstructor;
@@ -17,9 +19,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashMap;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -102,6 +108,65 @@ public class AdminController {
     public Map<String, Object> purgeDemoJobs() {
         int purged = demoJobSeedService.purgeDemoJobs();
         return Map.of("purged", purged);
+    }
+
+    /**
+     * Accept jobs from external scrapers (Bayt, NaukriGulf, Playwright scripts, etc.)
+     * and run them through the standard ingest pipeline (dedup + scoring).
+     * Responds synchronously with per-run counters.
+     */
+    @PostMapping("/ingest/external")
+    public Map<String, Object> ingestExternal(@RequestBody ExternalIngestRequest req) {
+        if (req.getJobs() == null || req.getJobs().isEmpty()) {
+            return Map.of("source", req.getSource(), "fetched", 0, "inserted", 0, "duplicates", 0, "rejected", 0);
+        }
+        String src = req.getSource() != null && !req.getSource().isBlank() ? req.getSource() : "external";
+        List<IngestedJob> jobs = req.getJobs().stream()
+                .filter(j -> j.getExternalId() != null && j.getTitle() != null && j.getApplyUrl() != null)
+                .map(j -> new IngestedJob(
+                        src + "_" + j.getExternalId(),
+                        src,
+                        j.getPublisher() != null ? j.getPublisher() : src,
+                        j.getTitle(),
+                        j.getCompany() != null ? j.getCompany() : "Unknown",
+                        j.getDescription() != null ? j.getDescription() : j.getTitle(),
+                        null,
+                        j.getLocation() != null ? j.getLocation() : "United Arab Emirates, AE",
+                        j.getEmirate(),
+                        j.getSalaryMin(),
+                        j.getSalaryMax(),
+                        j.getSalaryCurrency() != null ? j.getSalaryCurrency() : "AED",
+                        j.getJobType() != null ? j.getJobType() : "full_time",
+                        inferExperienceLevel(j.getTitle()),
+                        j.getApplyUrl(),
+                        Boolean.TRUE.equals(j.getRemoteUae()),
+                        parseDate(j.getPostedAt())
+                ))
+                .collect(Collectors.toList());
+
+        JobIngestService.Counters c = jobIngestService.runExternalBatch(jobs, src);
+        return Map.of(
+                "source",     src,
+                "fetched",    c.fetched,
+                "inserted",   c.inserted,
+                "duplicates", c.duplicatesL1 + c.duplicatesL2 + c.duplicatesL3,
+                "rejected",   c.rejectedHard + c.rejectedScore
+        );
+    }
+
+    private static String inferExperienceLevel(String title) {
+        if (title == null) return "mid_3_5_yrs";
+        String t = title.toLowerCase();
+        if (t.contains("senior") || t.contains("lead") || t.contains("principal") || t.contains("staff")) return "senior_5_plus";
+        if (t.contains("junior") || t.contains("entry") || t.contains("graduate")) return "junior_1_2_yrs";
+        if (t.contains("intern")) return "fresher";
+        return "mid_3_5_yrs";
+    }
+
+    private static OffsetDateTime parseDate(String s) {
+        if (s == null || s.isBlank()) return null;
+        try { return LocalDate.parse(s.substring(0, 10)).atStartOfDay().atOffset(ZoneOffset.UTC); }
+        catch (Exception e) { return null; }
     }
 
     /**

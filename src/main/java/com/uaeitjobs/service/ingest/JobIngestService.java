@@ -74,6 +74,30 @@ public class JobIngestService {
         return running.get();
     }
 
+    /**
+     * Accept a pre-built batch from an external scraper (Bayt, NaukriGulf, etc.)
+     * and run it through the same pipeline as any other source.
+     * The caller is responsible for setting stable {@code externalJobId} values
+     * so L1 dedup works correctly across runs.
+     */
+    public Counters runExternalBatch(List<IngestedJob> jobs, String source) {
+        IngestRunLog runLog = openLog(source, null);
+        Counters c = new Counters();
+        c.fetched = jobs.size();
+        try {
+            for (IngestedJob job : jobs) {
+                Outcome outcome = pipeline.process(job);
+                tally(c, outcome);
+            }
+        } catch (Exception e) {
+            log.warn("External batch '{}' failed: {}", source, e.getMessage());
+            runLog.setError(e.getMessage());
+        } finally {
+            closeLog(runLog, c);
+        }
+        return c;
+    }
+
     /** Per-cron run: keyword-driven JSearch first, then the legacy sources. */
     public Map<String, Object> runAll() {
         // Close any orphaned "running" rows left by a previous restart/crash.
