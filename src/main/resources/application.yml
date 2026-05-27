@@ -41,8 +41,13 @@ app:
     dev-origins: ${CORS_DEV_ORIGINS:http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173}
   upload-dir: ${UPLOAD_DIR:uploads}
   ingest:
+    # CareerJet — free public API, no key, direct UAE IT jobs feed.
+    careerjet:
+      enabled: ${CAREERJET_ENABLED:true}
+      pages: ${CAREERJET_PAGES:2}
+    # Adzuna searches the UK feed for UAE keywords — unreliable, disabled.
     adzuna:
-      enabled: ${ADZUNA_ENABLED:true}
+      enabled: ${ADZUNA_ENABLED:false}
       app-id: ${ADZUNA_APP_ID:}
       app-key: ${ADZUNA_APP_KEY:}
       pages: ${ADZUNA_PAGES:3}
