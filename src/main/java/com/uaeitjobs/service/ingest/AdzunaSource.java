@@ -45,11 +45,20 @@ public class AdzunaSource implements JobIngestSource {
     private static final String COUNTRY = "gb";
     private static final String CATEGORY_IT = "it-jobs";
     private static final int RESULTS_PER_PAGE = 50;
-    /** Phrases that catch UAE-related postings on the UK index. */
+    /**
+     * Exact phrases sent as `what_phrase` to the Adzuna GB IT-jobs index.
+     * Combining a job title with a UAE location forces the result to
+     * contain both terms verbatim, catching multinational postings like
+     * "Software Engineer — Dubai" or "We're hiring in Dubai, UAE."
+     */
     private static final List<String> SEARCH_PHRASES = List.of(
-            "United Arab Emirates",
-            "Dubai",
-            "Abu Dhabi"
+            "software engineer Dubai",
+            "developer Dubai",
+            "engineer Dubai UAE",
+            "software engineer Abu Dhabi",
+            "developer UAE",
+            "DevOps Dubai",
+            "data engineer UAE"
     );
 
     private final RestTemplate http;
@@ -125,29 +134,41 @@ public class AdzunaSource implements JobIngestSource {
         JsonNode body = http.getForObject(url, JsonNode.class);
         if (body == null || !body.has("results")) return List.of();
         JsonNode results = body.get("results");
-        List<IngestedJob> mapped = new ArrayList<>(results.size());
+        int raw = results.size();
+        List<IngestedJob> mapped = new ArrayList<>(raw);
         for (JsonNode node : results) {
             IngestedJob job = mapOne(node);
             if (job != null && mentionsUae(job)) mapped.add(job);
         }
+        log.debug("Adzuna phrase='{}' page={}: API returned {} results, {} passed UAE filter.",
+                phrase, page, raw, mapped.size());
         return mapped;
     }
 
-    /** Defensive filter — Adzuna's UK index returns UK-only roles whose
-     *  only UAE link is a stray description mention. We require the
-     *  LOCATION field to actually reference UAE (titles and descriptions
-     *  are too noisy). */
+    /**
+     * Confirm the job is actually UAE-related by checking location, description
+     * and title. We cannot rely on location alone because the GB Adzuna index
+     * stores UK locations even for postings that target UAE hires — the UAE
+     * keyword appears in the description, not in Adzuna's location display name.
+     */
     private static boolean mentionsUae(IngestedJob job) {
-        String location = (job.locationUae() == null ? "" : job.locationUae()).toLowerCase(Locale.ROOT);
-        return location.contains("united arab emirates")
-                || location.contains("uae")
-                || location.contains("dubai")
-                || location.contains("abu dhabi")
-                || location.contains("sharjah")
-                || location.contains("ajman")
-                || location.contains("ras al khaimah")
-                || location.contains("fujairah")
-                || location.contains("umm al quwain");
+        String haystack = (
+                (job.locationUae()  == null ? "" : job.locationUae())  + " " +
+                (job.description()  == null ? "" : job.description())  + " " +
+                (job.title()        == null ? "" : job.title())
+        ).toLowerCase(Locale.ROOT);
+        return haystack.contains("united arab emirates")
+                || haystack.contains(" uae ")
+                || haystack.contains("(uae)")
+                || haystack.contains("uae,")
+                || haystack.contains(", uae")
+                || haystack.contains("dubai")
+                || haystack.contains("abu dhabi")
+                || haystack.contains("sharjah")
+                || haystack.contains("ajman")
+                || haystack.contains("ras al khaimah")
+                || haystack.contains("fujairah")
+                || haystack.contains("umm al quwain");
     }
 
     private IngestedJob mapOne(JsonNode node) {
