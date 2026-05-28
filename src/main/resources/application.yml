@@ -41,23 +41,23 @@ app:
     dev-origins: ${CORS_DEV_ORIGINS:http://localhost:3000,http://localhost:5173,http://127.0.0.1:5173}
   upload-dir: ${UPLOAD_DIR:uploads}
   ingest:
-    # CareerJet — free public API, no key, direct UAE IT jobs feed.
+    # Free remote/global tech job sources — no auth, no key needed.
+    # Jobs are marked remoteUae=true and appear under the Remote filter.
+    remoteok:
+      enabled: ${REMOTEOK_ENABLED:true}
+    himalayas:
+      enabled: ${HIMALAYAS_ENABLED:true}
+    # CareerJet en_AE locale returns empty feed (too few UAE listings).
+    # Disabled until a working approach is found.
     careerjet:
-      enabled: ${CAREERJET_ENABLED:true}
+      enabled: ${CAREERJET_ENABLED:false}
       pages: ${CAREERJET_PAGES:2}
-    # Adzuna searches the UK feed for UAE keywords — unreliable, disabled.
+    # Adzuna has no UAE country code and the GB workaround is unreliable.
     adzuna:
       enabled: ${ADZUNA_ENABLED:false}
       app-id: ${ADZUNA_APP_ID:}
       app-key: ${ADZUNA_APP_KEY:}
       pages: ${ADZUNA_PAGES:3}
-    # Disabled by default — these sources return remote/global tech jobs,
-    # not UAE-located roles. Flip the env var to true if you want to mix
-    # remote-worldwide listings back in.
-    remoteok:
-      enabled: ${REMOTEOK_ENABLED:false}
-    himalayas:
-      enabled: ${HIMALAYAS_ENABLED:false}
     # JSearch via RapidAPI — UAE-specific Google for Jobs wrapper.
     # Set JSEARCH_RAPIDAPI_KEY in /opt/qten/.env to enable.
     #
