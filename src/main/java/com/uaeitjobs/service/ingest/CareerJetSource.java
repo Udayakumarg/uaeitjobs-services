@@ -4,6 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -108,8 +112,26 @@ public class CareerJetSource implements JobIngestSource {
                 .queryParam("sort",        "date")
                 .toUriString();
 
-        JsonNode body = http.getForObject(url, JsonNode.class);
-        if (body == null || !body.has("jobs") || !body.get("jobs").isArray()) return List.of();
+        // CareerJet's CDN blocks bare Java user-agents from datacenter IPs.
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+        headers.set("Accept", "application/json, text/plain, */*");
+
+        ResponseEntity<JsonNode> resp = http.exchange(
+                url, HttpMethod.GET, new HttpEntity<>(headers), JsonNode.class);
+        JsonNode body = resp.getBody();
+
+        if (body == null) {
+            log.warn("CareerJet keyword='{}' page={}: null response body.", keyword, page);
+            return List.of();
+        }
+        if (!body.has("jobs") || !body.get("jobs").isArray()) {
+            log.warn("CareerJet keyword='{}' page={}: unexpected response — top-level keys: {}",
+                    keyword, page, body.fieldNames());
+            return List.of();
+        }
 
         JsonNode jobs = body.get("jobs");
         List<IngestedJob> mapped = new ArrayList<>(jobs.size());

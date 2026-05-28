@@ -17,10 +17,16 @@ import java.util.regex.Pattern;
 @Component
 public class RelevanceScorer {
 
-    public static final int MIN_SCORE = 70;
+    /**
+     * Minimum score to persist a job. Set to 40 so that any job whose title
+     * matches a recognised IT-domain keyword is accepted regardless of
+     * description length. JSearch v2 returns truncated descriptions (~300 chars)
+     * which cannot consistently provide the extra points needed to reach 70.
+     */
+    public static final int MIN_SCORE = 40;
 
     private static final Pattern TECH_DOMAIN = Pattern.compile(
-            "(?i)\\b(qa|automation|sdet|tester|software|backend|frontend|full[-\\s]?stack|" +
+            "(?i)\\b(it|ict|qa|automation|sdet|tester|software|backend|frontend|full[-\\s]?stack|" +
                     "devops|sre|platform|cloud|data|machine learning|ml|ai|security|cyber|" +
                     "mobile|ios|android|architect|engineer|developer|programmer)\\b"
     );
