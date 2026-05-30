@@ -51,13 +51,16 @@ public final class AuthDTO {
     }
 
     public record UpdateUserRequest(
-            @Size(max = 100) String displayName,
-            @Size(max = 30)  String phone,
-            @Size(max = 100) String country
+            @Size(max = 100)   String displayName,
+            @Size(max = 30)    String phone,
+            @Size(max = 100)   String country,
+            /** Client-compressed base64 JPEG. Must start with "data:image/" if present.
+             *  Max ~15 KB base64 string — enforced at 20 000 chars. */
+            @Size(max = 20000) String avatarUrl
     ) {
     }
 
-    public record UserResponse(Long id, String email, String displayName, UserType userType, String phone, String country, boolean verified, OffsetDateTime createdAt) {
+    public record UserResponse(Long id, String email, String displayName, UserType userType, String phone, String country, boolean verified, OffsetDateTime createdAt, String avatarUrl) {
     }
 
     public record AuthResponse(String accessToken, String refreshToken, UserResponse user) {

@@ -41,4 +41,8 @@ public class User {
 
     @Column(name = "last_login")
     private OffsetDateTime lastLogin;
+
+    /** Client-compressed base64 JPEG avatar (~80×80 px, ≤ 15 KB). Stored as TEXT. */
+    @Column(name = "avatar_url", columnDefinition = "TEXT")
+    private String avatarUrl;
 }

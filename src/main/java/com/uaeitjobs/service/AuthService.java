@@ -149,6 +149,15 @@ public class AuthService {
         if (request.country() != null) {
             user.setCountry(request.country().isBlank() ? null : request.country().trim());
         }
+        if (request.avatarUrl() != null) {
+            String avatar = request.avatarUrl().trim();
+            if (avatar.isBlank()) {
+                user.setAvatarUrl(null);
+            } else if (avatar.startsWith("data:image/")) {
+                user.setAvatarUrl(avatar);
+            }
+            // silently ignore invalid values that don't start with "data:image/"
+        }
         return userMapper.toResponse(user);
     }
 
