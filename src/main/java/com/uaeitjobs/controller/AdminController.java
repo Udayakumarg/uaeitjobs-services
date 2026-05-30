@@ -19,6 +19,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.uaeitjobs.dto.JobDTO;
+import com.uaeitjobs.service.JobService;
+
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -36,6 +39,7 @@ public class AdminController {
     private final CurrentUserService currentUserService;
     private final JobIngestService jobIngestService;
     private final IngestRunLogRepository ingestRunLogRepository;
+    private final JobService jobService;
 
     @GetMapping("/stats")
     public AdminDTO.StatsResponse stats() {
@@ -204,5 +208,18 @@ public class AdminController {
                 "running", jobIngestService.isRunning(),
                 "recent", recent
         );
+    }
+
+    /**
+     * Admin job listing — includes both active and archived jobs.
+     * Supports searching by title/company and filtering by active status.
+     */
+    @GetMapping("/jobs")
+    public Page<JobDTO.JobResponse> adminJobs(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Boolean active,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return jobService.adminList(q, active, PageUtil.page(page, size));
     }
 }

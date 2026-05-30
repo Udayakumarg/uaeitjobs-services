@@ -14,6 +14,18 @@ import java.util.Optional;
 
 public interface JobRepository extends JpaRepository<Job, Long> {
     Page<Job> findByActiveTrue(Pageable pageable);
+    Page<Job> findByActive(boolean active, Pageable pageable);
+
+    @Query(value = "SELECT * FROM jobs WHERE is_active = :active AND (title ILIKE '%' || :q || '%' OR company_name ILIKE '%' || :q || '%')",
+           countQuery = "SELECT count(*) FROM jobs WHERE is_active = :active AND (title ILIKE '%' || :q || '%' OR company_name ILIKE '%' || :q || '%')",
+           nativeQuery = true)
+    Page<Job> adminSearch(@Param("q") String q, @Param("active") boolean active, Pageable pageable);
+
+    @Query(value = "SELECT * FROM jobs WHERE title ILIKE '%' || :q || '%' OR company_name ILIKE '%' || :q || '%'",
+           countQuery = "SELECT count(*) FROM jobs WHERE title ILIKE '%' || :q || '%' OR company_name ILIKE '%' || :q || '%'",
+           nativeQuery = true)
+    Page<Job> adminSearchAll(@Param("q") String q, Pageable pageable);
+
     Page<Job> findByPostedBy(User user, Pageable pageable);
     Page<Job> findByPostedByAndActiveTrue(User user, Pageable pageable);
     Optional<Job> findByIdAndActiveTrue(Long id);

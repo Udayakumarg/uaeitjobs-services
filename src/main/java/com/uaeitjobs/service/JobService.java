@@ -48,6 +48,21 @@ public class JobService {
                 .map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
     }
 
+    /** Admin-only: list all jobs (active + archived) with optional search and active filter. */
+    public Page<JobDTO.JobResponse> adminList(String q, Boolean active, Pageable pageable) {
+        Page<Job> page;
+        if (active != null && q != null && !q.isBlank()) {
+            page = jobRepository.adminSearch(q.trim(), active, pageable);
+        } else if (active != null) {
+            page = jobRepository.findByActive(active, pageable);
+        } else if (q != null && !q.isBlank()) {
+            page = jobRepository.adminSearchAll(q.trim(), pageable);
+        } else {
+            page = jobRepository.findAll(pageable);
+        }
+        return page.map(jobMapper::toResponse);
+    }
+
     @Transactional
     public JobDTO.JobResponse detail(Long id) {
         Job job = jobRepository.findByIdAndActiveTrue(id).orElseThrow(() -> new ResourceNotFoundException("Job not found"));
