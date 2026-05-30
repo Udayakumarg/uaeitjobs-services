@@ -14,6 +14,7 @@ class EmailServiceTest {
                 "noreply@uaeitjobs.test",
                 "UAEITJOBS Test",
                 "http://localhost:3000",
+                "hello@uaeitjobs.com",
                 new MockEnvironment().withProperty("spring.profiles.active", "test")
         );
 
@@ -30,6 +31,7 @@ class EmailServiceTest {
                 "noreply@uaeitjobs.com",
                 "UAEITJOBS",
                 "https://uaeitjobs.com",
+                "hello@uaeitjobs.com",
                 environment
         );
 
@@ -48,6 +50,7 @@ class EmailServiceTest {
                     "noreply@uaeitjobs.com",
                     "UAEITJOBS",
                     "https://uaeitjobs.com",
+                    "hello@uaeitjobs.com",
                     null
             );
 
