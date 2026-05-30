@@ -50,6 +50,17 @@ public final class AuthDTO {
     ) {
     }
 
+    public record ChangePasswordRequest(
+            @NotBlank String currentPassword,
+            @NotBlank @Size(min = 8, max = 120)
+            @Pattern(
+                    regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&_\\-#^()])[A-Za-z\\d@$!%*?&_\\-#^()]{8,}$",
+                    message = "must contain uppercase, lowercase, digit, and a special character"
+            )
+            String newPassword
+    ) {
+    }
+
     public record UpdateUserRequest(
             @Size(max = 100)   String displayName,
             @Size(max = 30)    String phone,

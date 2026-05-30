@@ -132,6 +132,22 @@ public class AuthService {
     }
 
     /**
+     * Changes the current user's password after verifying the existing one.
+     * All existing refresh tokens are revoked so other devices are logged out.
+     */
+    @Transactional
+    public void changePassword(User currentUser, AuthDTO.ChangePasswordRequest request) {
+        User user = userRepository.findById(currentUser.getId())
+                .orElseThrow(() -> new UnauthorizedException("User not found"));
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new ValidationException("Current password is incorrect");
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        // Revoke all refresh tokens — logs out all other active sessions
+        refreshTokenRepository.revokeAllByUser(user);
+    }
+
+    /**
      * Updates the current user's display name, phone, and country.
      * Evicts the user from the {@code CurrentUserService} cache so subsequent
      * requests within the same cache window see the fresh values.

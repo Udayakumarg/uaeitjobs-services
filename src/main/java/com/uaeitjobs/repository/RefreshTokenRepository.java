@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.OffsetDateTime;
 import java.util.Optional;
+import java.util.List;
 
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long> {
     Optional<RefreshToken> findByToken(String token);
@@ -18,6 +19,11 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
 
     @Modifying
     void deleteByUser(User user);
+
+    /** Revoke all active refresh tokens for a user — called after password change. */
+    @Modifying
+    @Query("UPDATE RefreshToken t SET t.revoked = true WHERE t.user = :user AND t.revoked = false")
+    void revokeAllByUser(@Param("user") User user);
 
     /**
      * Bulk-delete tokens that have already expired or been explicitly revoked.

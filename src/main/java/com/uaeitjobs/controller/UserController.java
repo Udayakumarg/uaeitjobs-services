@@ -5,6 +5,7 @@ import com.uaeitjobs.service.AuthService;
 import com.uaeitjobs.service.CurrentUserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -20,11 +21,22 @@ public class UserController {
     private final CurrentUserService currentUserService;
 
     /**
-     * Update the current user's display name, phone, and/or country.
-     * Only the fields included in the request body are mutated (null = keep existing).
+     * Update the current user's display name, phone, country, and/or avatar.
+     * Only fields present in the request body are mutated (null = keep existing).
      */
     @PatchMapping("/profile")
     public AuthDTO.UserResponse updateProfile(@Valid @RequestBody AuthDTO.UpdateUserRequest request) {
         return authService.updateProfile(currentUserService.get(), request);
+    }
+
+    /**
+     * Change the current user's password.
+     * Requires the correct current password. Revokes all other refresh tokens
+     * on success, signing out any other active sessions.
+     */
+    @PostMapping("/change-password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void changePassword(@Valid @RequestBody AuthDTO.ChangePasswordRequest request) {
+        authService.changePassword(currentUserService.get(), request);
     }
 }
