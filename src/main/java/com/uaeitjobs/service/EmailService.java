@@ -7,6 +7,8 @@ import com.sendgrid.SendGrid;
 import com.sendgrid.helpers.mail.Mail;
 import com.sendgrid.helpers.mail.objects.Content;
 import com.sendgrid.helpers.mail.objects.Email;
+import com.sendgrid.helpers.mail.objects.ClickTrackingSetting;
+import com.sendgrid.helpers.mail.objects.TrackingSettings;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -191,6 +193,15 @@ public class EmailService {
         Email to = new Email(toEmail);
         Content content = new Content("text/html", htmlContent);
         Mail mail = new Mail(from, subject, to, content);
+
+        // Disable click tracking — prevents SendGrid wrapping links through
+        // url*.uaeitjobs.com which lacks an SSL cert, breaking verify buttons.
+        ClickTrackingSetting clickTracking = new ClickTrackingSetting();
+        clickTracking.setEnable(false);
+        clickTracking.setEnableText(false);
+        TrackingSettings tracking = new TrackingSettings();
+        tracking.setClickTrackingSetting(clickTracking);
+        mail.setTrackingSettings(tracking);
 
         SendGrid sendGrid = new SendGrid(sendGridKey);
         Request request = new Request();
