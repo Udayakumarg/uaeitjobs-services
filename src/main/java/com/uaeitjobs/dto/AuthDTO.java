@@ -36,6 +36,20 @@ public final class AuthDTO {
     public record VerifyEmailRequest(@NotBlank String token) {
     }
 
+    public record ForgotPasswordRequest(@Email @NotBlank String email) {
+    }
+
+    public record ResetPasswordRequest(
+            @NotBlank String token,
+            @NotBlank @Size(min = 8, max = 120)
+            @Pattern(
+                    regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&_\\-#^()])[A-Za-z\\d@$!%*?&_\\-#^()]{8,}$",
+                    message = "must contain uppercase, lowercase, digit, and a special character"
+            )
+            String newPassword
+    ) {
+    }
+
     public record UserResponse(Long id, String email, String displayName, UserType userType, String phone, String country, boolean verified, OffsetDateTime createdAt) {
     }
 

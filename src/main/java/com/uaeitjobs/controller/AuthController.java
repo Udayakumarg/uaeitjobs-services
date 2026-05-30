@@ -98,6 +98,24 @@ public class AuthController {
         authService.verifyEmail(request.token());
     }
 
+    // ── Password reset ────────────────────────────────────────────────────────
+
+    /**
+     * Sends a password-reset email. Always returns 204 regardless of whether the
+     * address is registered, to prevent user enumeration.
+     */
+    @PostMapping("/forgot-password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void forgotPassword(@Valid @RequestBody AuthDTO.ForgotPasswordRequest request) {
+        authService.forgotPassword(request.email());
+    }
+
+    @PostMapping("/reset-password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resetPassword(@Valid @RequestBody AuthDTO.ResetPasswordRequest request) {
+        authService.resetPassword(request.token(), request.newPassword());
+    }
+
     // ── Token resolution ─────────────────────────────────────────────────────
 
     /**

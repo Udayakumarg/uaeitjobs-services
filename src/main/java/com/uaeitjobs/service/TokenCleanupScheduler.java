@@ -1,6 +1,7 @@
 package com.uaeitjobs.service;
 
 import com.uaeitjobs.repository.EmailVerificationTokenRepository;
+import com.uaeitjobs.repository.PasswordResetTokenRepository;
 import com.uaeitjobs.repository.RefreshTokenRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +29,7 @@ public class TokenCleanupScheduler {
 
     private final RefreshTokenRepository refreshTokenRepository;
     private final EmailVerificationTokenRepository emailVerificationTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
 
     @Scheduled(cron = "0 0 3 * * *")
     @Transactional
@@ -35,7 +37,8 @@ public class TokenCleanupScheduler {
         OffsetDateTime now = OffsetDateTime.now();
         int refreshDeleted = refreshTokenRepository.deleteExpiredOrRevoked(now);
         int verificationDeleted = emailVerificationTokenRepository.deleteExpiredOrUsed(now);
-        log.info("Token cleanup complete — refresh tokens removed: {}, verification tokens removed: {}",
-                refreshDeleted, verificationDeleted);
+        int resetDeleted = passwordResetTokenRepository.deleteExpiredOrUsed(now);
+        log.info("Token cleanup complete — refresh: {}, verification: {}, password-reset: {} removed",
+                refreshDeleted, verificationDeleted, resetDeleted);
     }
 }

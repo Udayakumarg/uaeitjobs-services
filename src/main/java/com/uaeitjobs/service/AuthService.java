@@ -6,7 +6,9 @@ import com.uaeitjobs.entity.*;
 import com.uaeitjobs.exception.UnauthorizedException;
 import com.uaeitjobs.exception.ValidationException;
 import com.uaeitjobs.mapper.UserMapper;
+import com.uaeitjobs.entity.PasswordResetToken;
 import com.uaeitjobs.repository.EmailVerificationTokenRepository;
+import com.uaeitjobs.repository.PasswordResetTokenRepository;
 import com.uaeitjobs.repository.RefreshTokenRepository;
 import com.uaeitjobs.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,6 +26,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final EmailVerificationTokenRepository emailVerificationTokenRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final UserMapper userMapper;
@@ -100,6 +103,32 @@ public class AuthService {
                 .orElseThrow(() -> new ValidationException("Invalid verification token"));
         token.setUsed(true);
         token.getUser().setVerified(true);
+    }
+
+    /**
+     * Initiates a password reset flow. Always returns successfully, even when the
+     * email is not registered, to prevent user enumeration attacks.
+     */
+    @Transactional
+    public void forgotPassword(String email) {
+        userRepository.findByEmailIgnoreCase(email).ifPresent(user -> {
+            PasswordResetToken token = new PasswordResetToken();
+            token.setUser(user);
+            token.setToken(UUID.randomUUID().toString());
+            token.setExpiresAt(OffsetDateTime.now().plusHours(1));
+            passwordResetTokenRepository.save(token);
+            emailService.sendPasswordResetEmail(user.getEmail(), token.getToken());
+        });
+    }
+
+    @Transactional
+    public void resetPassword(String tokenValue, String newPassword) {
+        PasswordResetToken token = passwordResetTokenRepository.findByToken(tokenValue)
+                .filter(t -> !t.isUsed())
+                .filter(t -> t.getExpiresAt().isAfter(OffsetDateTime.now()))
+                .orElseThrow(() -> new ValidationException("This reset link is invalid or has expired. Please request a new one."));
+        token.setUsed(true);
+        token.getUser().setPasswordHash(passwordEncoder.encode(newPassword));
     }
 
     private AuthDTO.AuthResponse issueTokens(User user) {

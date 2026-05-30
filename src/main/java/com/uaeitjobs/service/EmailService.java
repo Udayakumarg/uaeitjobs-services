@@ -85,6 +85,16 @@ public class EmailService {
         sendEmailOrLog(hrEmail, "New applicant: " + jobTitle, html);
     }
 
+    public void sendPasswordResetEmail(String toEmail, String token) {
+        String resetLink = frontendUrl + "/reset-password?token=" + token;
+        String html = layout("Reset your password",
+            block("Reset your password") +
+            text("We received a request to reset the password for your UAEITJOBS account. Click the button below to choose a new one.") +
+            cta(resetLink, "Reset Password") +
+            muted("This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email — your account has not been changed."));
+        sendEmailOrLog(toEmail, "Reset your UAEITJOBS password", html);
+    }
+
     public void sendApplicationStatusUpdate(String toEmail, String jobTitle, String status) {
         String heading = switch (status) {
             case "shortlisted" -> "You've been shortlisted";
