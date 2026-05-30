@@ -53,9 +53,33 @@ public class RelevanceScorer {
                     "ras\\s*al\\s*khaimah|fujairah|umm\\s*al\\s*quwain"
     );
 
+    /**
+     * Explicit non-UAE countries in the location field → hard reject.
+     * JSearch sets country="AE" for every result (it's the search param,
+     * not the job's real country), so we must check the location string
+     * for countries that are clearly not UAE.
+     */
+    private static final Pattern NON_UAE_COUNTRY = Pattern.compile(
+            "(?i)\\b(indonesia|india|pakistan|philippines|nigeria|kenya|egypt|" +
+                    "bangladesh|sri lanka|nepal|vietnam|thailand|malaysia|singapore|" +
+                    "saudi arabia|qatar|bahrain|oman|kuwait|jordan|lebanon|iraq|" +
+                    "germany|france|uk|united kingdom|canada|australia|" +
+                    "united states|\\busa\\b|china|japan|south korea|brazil|mexico|" +
+                    "south africa|turkey|russia|poland|ukraine|romania)\\b"
+    );
+
     public boolean hardReject(String title, String location, String country, String description) {
         if (title == null || title.isBlank()) return true;
         if (STRONG_NEGATIVE.matcher(title).find()) return true;
+
+        // If location explicitly names a non-UAE country, reject immediately.
+        // This catches JSearch jobs where country="AE" (search param) but the
+        // actual job is in Indonesia, India, etc.
+        String loc = safe(location).toLowerCase(Locale.ROOT);
+        if (!loc.isBlank() && NON_UAE_COUNTRY.matcher(loc).find() && !UAE_LOCATION.matcher(loc).find()) {
+            return true;
+        }
+
         // Must be UAE-located in some field
         String haystack = (safe(location) + " " + safe(country) + " " + safe(description)).toLowerCase(Locale.ROOT);
         return !UAE_LOCATION.matcher(haystack).find() && !"AE".equalsIgnoreCase(safe(country));
