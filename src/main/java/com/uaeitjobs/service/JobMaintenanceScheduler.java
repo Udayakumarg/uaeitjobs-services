@@ -64,14 +64,18 @@ public class JobMaintenanceScheduler {
      */
     @Scheduled(cron = "${app.cron.ingest-jobs:0 0 */6 * * *}", zone = "UTC")
     public void ingestExternalJobs() {
-        Map<String, Object> report = jobIngestService.runAll();
-        int total = report.values().stream()
-                .mapToInt(v -> v instanceof Integer i ? i : 0)
-                .sum();
-        if (total > 0) {
-            log.info("Cron: ingested {} new job(s) across sources: {}", total, report);
-        } else {
-            log.info("Cron: ingest finished with no new jobs ({})", report);
+        try {
+            Map<String, Object> report = jobIngestService.runAll();
+            int total = report.values().stream()
+                    .mapToInt(v -> v instanceof Integer i ? i : 0)
+                    .sum();
+            if (total > 0) {
+                log.info("Cron: ingested {} new job(s) across sources: {}", total, report);
+            } else {
+                log.info("Cron: ingest finished with no new jobs ({})", report);
+            }
+        } catch (Exception e) {
+            log.error("Cron: ingest run FAILED — {}", e.getMessage(), e);
         }
     }
 }

@@ -137,8 +137,16 @@ public class JobIngestService {
                 report.put(source.name(), 0);
                 continue;
             }
-            Counters c = runGeneric(source);
-            report.put(source.name(), c.inserted);
+            try {
+                log.info("Ingest: starting source '{}'", source.name());
+                Counters c = runGeneric(source);
+                report.put(source.name(), c.inserted);
+                log.info("Ingest: source '{}' done — {} fetched, {} inserted",
+                        source.name(), c.fetched, c.inserted);
+            } catch (Exception e) {
+                log.error("Ingest: source '{}' CRASHED — {}", source.name(), e.getMessage(), e);
+                report.put(source.name(), 0);
+            }
         }
         return report;
     }
@@ -213,16 +221,20 @@ public class JobIngestService {
         return runLogRepo.save(log);
     }
 
-    private void closeLog(IngestRunLog log, Counters c) {
-        log.setFinishedAt(OffsetDateTime.now());
-        log.setFetched(c.fetched);
-        log.setRejectedHard(c.rejectedHard);
-        log.setRejectedScore(c.rejectedScore);
-        log.setDuplicatesL1(c.duplicatesL1);
-        log.setDuplicatesL2(c.duplicatesL2);
-        log.setDuplicatesL3(c.duplicatesL3);
-        log.setInserted(c.inserted);
-        runLogRepo.save(log);
+    private void closeLog(IngestRunLog rl, Counters c) {
+        try {
+            rl.setFinishedAt(OffsetDateTime.now());
+            rl.setFetched(c.fetched);
+            rl.setRejectedHard(c.rejectedHard);
+            rl.setRejectedScore(c.rejectedScore);
+            rl.setDuplicatesL1(c.duplicatesL1);
+            rl.setDuplicatesL2(c.duplicatesL2);
+            rl.setDuplicatesL3(c.duplicatesL3);
+            rl.setInserted(c.inserted);
+            runLogRepo.save(rl);
+        } catch (Exception e) {
+            log.error("Failed to close ingest log id={}: {}", rl.getId(), e.getMessage());
+        }
     }
 
     private static void tally(Counters c, Outcome outcome) {
