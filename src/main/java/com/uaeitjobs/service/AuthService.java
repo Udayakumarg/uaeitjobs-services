@@ -131,6 +131,27 @@ public class AuthService {
         token.getUser().setPasswordHash(passwordEncoder.encode(newPassword));
     }
 
+    /**
+     * Updates the current user's display name, phone, and country.
+     * Evicts the user from the {@code CurrentUserService} cache so subsequent
+     * requests within the same cache window see the fresh values.
+     */
+    @Transactional
+    public AuthDTO.UserResponse updateProfile(User currentUser, AuthDTO.UpdateUserRequest request) {
+        User user = userRepository.findById(currentUser.getId())
+                .orElseThrow(() -> new UnauthorizedException("User not found"));
+        if (request.displayName() != null) {
+            user.setDisplayName(request.displayName().isBlank() ? null : request.displayName().trim());
+        }
+        if (request.phone() != null) {
+            user.setPhone(request.phone().isBlank() ? null : request.phone().trim());
+        }
+        if (request.country() != null) {
+            user.setCountry(request.country().isBlank() ? null : request.country().trim());
+        }
+        return userMapper.toResponse(user);
+    }
+
     private AuthDTO.AuthResponse issueTokens(User user) {
         RefreshToken refreshToken = new RefreshToken();
         refreshToken.setUser(user);

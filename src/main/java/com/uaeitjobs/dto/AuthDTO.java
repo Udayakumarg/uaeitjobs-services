@@ -50,6 +50,13 @@ public final class AuthDTO {
     ) {
     }
 
+    public record UpdateUserRequest(
+            @Size(max = 100) String displayName,
+            @Size(max = 30)  String phone,
+            @Size(max = 100) String country
+    ) {
+    }
+
     public record UserResponse(Long id, String email, String displayName, UserType userType, String phone, String country, boolean verified, OffsetDateTime createdAt) {
     }
 
