@@ -63,6 +63,13 @@ public class AdminController {
         adminService.deleteUser(id);
     }
 
+    /** Resend the account-activation email for a user who hasn't verified yet. */
+    @PostMapping("/users/{id}/resend-verification")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resendVerification(@PathVariable Long id) {
+        adminService.resendVerification(id);
+    }
+
     /** Create a new user of any type (including admin) — pre-verified, no email required. */
     @PostMapping("/users")
     @ResponseStatus(HttpStatus.CREATED)
