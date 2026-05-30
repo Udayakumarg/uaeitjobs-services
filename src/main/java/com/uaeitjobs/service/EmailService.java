@@ -49,50 +49,126 @@ public class EmailService {
         }
     }
 
+    // ── Email templates ───────────────────────────────────────────────────────
+
     public void sendVerificationEmail(String toEmail, String token) {
         String verifyLink = frontendUrl + "/verify-email?token=" + token;
-        String htmlContent = """
-                <h2>Verify Your Email</h2>
-                <p>Click the link below to verify your UAEITJOBS account:</p>
-                <p><a href="%s" style="background:#007bff;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">Verify Email</a></p>
-                <p>This link expires in 24 hours.</p>
-                """.formatted(escapeHtml(verifyLink));
-        sendEmailOrLog(toEmail, "Verify Your UAEITJOBS Account", htmlContent);
+        String html = layout("Verify your email address",
+            block("Verify your email address") +
+            text("You're almost there. Click the button below to verify your email and activate your UAEITJOBS account.") +
+            cta(verifyLink, "Verify Email Address") +
+            muted("This link expires in 24 hours. If you didn't create an account, you can safely ignore this email."));
+        sendEmailOrLog(toEmail, "Verify your UAEITJOBS account", html);
     }
 
     public void sendJobApplicationConfirmation(String toEmail, String jobTitle, String companyName) {
-        String htmlContent = """
-                <h2>Application Submitted</h2>
-                <p>Your application for <strong>%s</strong> at <strong>%s</strong> has been submitted.</p>
-                <p>The hiring team will review your profile and contact you soon.</p>
-                """.formatted(escapeHtml(jobTitle), escapeHtml(companyName));
-        sendEmailOrLog(toEmail, "Application Confirmation", htmlContent);
+        String html = layout("Application submitted",
+            block("Application submitted") +
+            text("Your application for <strong>" + escapeHtml(jobTitle) + "</strong> at <strong>"
+                + escapeHtml(companyName) + "</strong> has been received.") +
+            text("The hiring team will review your profile and reach out if there's a match. Keep an eye on your inbox.") +
+            cta(frontendUrl + "/dashboard/applications", "View My Applications") +
+            muted("You're receiving this because you applied via UAEITJOBS."));
+        sendEmailOrLog(toEmail, "Application received: " + jobTitle, html);
     }
 
     public void notifyNewApplicant(String hrEmail, String jobTitle, String applicantName, String applicantEmail) {
-        String dashboardLink = frontendUrl + "/hr/dashboard/applicants";
-        String htmlContent = """
-                <h2>New Application Received</h2>
-                <p><strong>%s</strong> (%s) applied for:</p>
-                <p><strong>%s</strong></p>
-                <p><a href="%s" style="background:#28a745;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">View Applicant</a></p>
-                """.formatted(escapeHtml(applicantName), escapeHtml(applicantEmail), escapeHtml(jobTitle), escapeHtml(dashboardLink));
-        sendEmailOrLog(hrEmail, "New Job Application: " + jobTitle, htmlContent);
+        String html = layout("New application received",
+            block("New application received") +
+            text("<strong>" + escapeHtml(applicantName) + "</strong> (" + escapeHtml(applicantEmail)
+                + ") has applied for the role:") +
+            highlight(escapeHtml(jobTitle)) +
+            cta(frontendUrl + "/hr/dashboard/applicants", "Review Applicant") +
+            muted("Manage all your applications from your UAEITJOBS HR dashboard."));
+        sendEmailOrLog(hrEmail, "New applicant: " + jobTitle, html);
     }
 
     public void sendApplicationStatusUpdate(String toEmail, String jobTitle, String status) {
-        String statusMessage = switch (status) {
-            case "shortlisted" -> "Congratulations. You have been shortlisted for " + jobTitle + ".";
-            case "rejected" -> "Thank you for applying. The hiring team is moving forward with other candidates for " + jobTitle + ".";
-            case "hired" -> "Wonderful news. You have been hired for " + jobTitle + ".";
-            default -> "Your application status for " + jobTitle + " has been updated to: " + status + ".";
+        String heading = switch (status) {
+            case "shortlisted" -> "You've been shortlisted";
+            case "rejected"    -> "Application update";
+            case "hired"       -> "Congratulations — you're hired!";
+            default            -> "Application status update";
         };
-        String htmlContent = """
-                <h2>Application Status Update</h2>
-                <p>%s</p>
-                <p>Log in to UAEITJOBS to view more details.</p>
-                """.formatted(escapeHtml(statusMessage));
-        sendEmailOrLog(toEmail, "Application Status: " + status, htmlContent);
+        String body = switch (status) {
+            case "shortlisted" -> "Great news — you have been shortlisted for <strong>" + escapeHtml(jobTitle) + "</strong>. The hiring team will be in touch shortly.";
+            case "rejected"    -> "Thank you for your interest in <strong>" + escapeHtml(jobTitle) + "</strong>. The team has decided to move forward with other candidates at this time.";
+            case "hired"       -> "We're thrilled to let you know you have been selected for <strong>" + escapeHtml(jobTitle) + "</strong>. Congratulations!";
+            default            -> "Your application for <strong>" + escapeHtml(jobTitle) + "</strong> has been updated to <strong>" + escapeHtml(status) + "</strong>.";
+        };
+        String html = layout(heading,
+            block(heading) +
+            text(body) +
+            cta(frontendUrl + "/dashboard/applications", "View Application") +
+            muted("You're receiving this because you applied via UAEITJOBS."));
+        sendEmailOrLog(toEmail, heading + ": " + jobTitle, html);
+    }
+
+    // ── HTML template helpers ─────────────────────────────────────────────────
+
+    private String layout(String title, String body) {
+        return """
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <title>%s</title>
+            </head>
+            <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+              <table width="100%%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 16px;">
+                <tr><td align="center">
+                  <table width="100%%" cellpadding="0" cellspacing="0" style="max-width:560px;">
+
+                    <!-- Header -->
+                    <tr><td style="padding-bottom:24px;text-align:center;">
+                      <span style="font-size:18px;font-weight:700;letter-spacing:-0.3px;color:#0f172a;">UAE<span style="color:#be185d;">IT</span>JOBS</span>
+                    </td></tr>
+
+                    <!-- Card -->
+                    <tr><td style="background:#ffffff;border-radius:12px;border:1px solid #e4e4e7;padding:40px 40px 32px;">
+                      %s
+                    </td></tr>
+
+                    <!-- Footer -->
+                    <tr><td style="padding-top:24px;text-align:center;font-size:12px;color:#a1a1aa;line-height:1.6;">
+                      UAE IT Jobs &nbsp;·&nbsp; Dubai, United Arab Emirates<br/>
+                      <a href="%s" style="color:#a1a1aa;">uaeitjobs.com</a>
+                    </td></tr>
+
+                  </table>
+                </td></tr>
+              </table>
+            </body>
+            </html>
+            """.formatted(escapeHtml(title), body, frontendUrl);
+    }
+
+    private String block(String heading) {
+        return "<h1 style=\"margin:0 0 16px;font-size:22px;font-weight:700;color:#0f172a;letter-spacing:-0.3px;\">"
+            + escapeHtml(heading) + "</h1>";
+    }
+
+    private String text(String html) {
+        return "<p style=\"margin:0 0 16px;font-size:15px;color:#3f3f46;line-height:1.65;\">" + html + "</p>";
+    }
+
+    private String highlight(String text) {
+        return "<div style=\"margin:16px 0;padding:14px 18px;background:#fdf2f8;border-left:3px solid #be185d;"
+            + "border-radius:6px;font-size:15px;font-weight:600;color:#be185d;\">" + text + "</div>";
+    }
+
+    private String cta(String url, String label) {
+        return "<div style=\"margin:28px 0 24px;\">"
+            + "<a href=\"" + url + "\" style=\"display:inline-block;background:#be185d;color:#ffffff;"
+            + "text-decoration:none;font-size:14px;font-weight:600;padding:13px 28px;"
+            + "border-radius:8px;letter-spacing:0.1px;\">" + escapeHtml(label) + "</a>"
+            + "</div>";
+    }
+
+    private String muted(String html) {
+        return "<p style=\"margin:0;font-size:12px;color:#a1a1aa;line-height:1.6;border-top:1px solid #f4f4f5;"
+            + "padding-top:16px;\">" + html + "</p>";
     }
 
     private void sendEmailOrLog(String toEmail, String subject, String htmlContent) {
