@@ -26,17 +26,20 @@ public class EmailService {
     private final String fromEmail;
     private final String fromName;
     private final String frontendUrl;
+    private final String adminEmail;
     private final Environment environment;
 
     public EmailService(@Value("${sendgrid.api-key:}") String sendGridKey,
                         @Value("${sendgrid.from-email:noreply@uaeitjobs.com}") String fromEmail,
                         @Value("${sendgrid.from-name:UAEITJOBS}") String fromName,
                         @Value("${app.frontend-url:http://localhost:3000}") String frontendUrl,
+                        @Value("${sendgrid.admin-email:hello@uaeitjobs.com}") String adminEmail,
                         Environment environment) {
         this.sendGridKey = sendGridKey;
         this.fromEmail = fromEmail;
         this.fromName = fromName;
         this.frontendUrl = frontendUrl;
+        this.adminEmail = adminEmail;
         this.environment = environment;
     }
 
@@ -83,6 +86,16 @@ public class EmailService {
             cta(frontendUrl + "/hr/dashboard/applicants", "Review Applicant") +
             muted("Manage all your applications from your UAEITJOBS HR dashboard."));
         sendEmailOrLog(hrEmail, "New applicant: " + jobTitle, html);
+    }
+
+    public void sendContactFormEmail(String senderName, String senderEmail, String subject, String message) {
+        String html = layout("New contact form message",
+            block("New message from " + escapeHtml(senderName)) +
+            text("From: <strong>" + escapeHtml(senderName) + "</strong> &lt;" + escapeHtml(senderEmail) + "&gt;") +
+            text("Subject: <strong>" + escapeHtml(subject) + "</strong>") +
+            highlight(escapeHtml(message)) +
+            muted("Reply directly to this email to reach " + escapeHtml(senderName) + "."));
+        sendEmailOrLog(adminEmail, "[Contact] " + subject, html);
     }
 
     public void sendPasswordResetEmail(String toEmail, String token) {

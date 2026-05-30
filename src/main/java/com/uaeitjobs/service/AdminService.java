@@ -9,6 +9,7 @@ import com.uaeitjobs.exception.ValidationException;
 import com.uaeitjobs.repository.ApplicationRepository;
 import com.uaeitjobs.repository.EmailVerificationTokenRepository;
 import com.uaeitjobs.repository.JobRepository;
+import com.uaeitjobs.repository.RefreshTokenRepository;
 import com.uaeitjobs.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -17,8 +18,12 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.domain.PageRequest;
+
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -28,11 +33,56 @@ public class AdminService {
     private final ApplicationRepository applicationRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailVerificationTokenRepository emailVerificationTokenRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final EmailService emailService;
 
     public AdminDTO.StatsResponse stats() {
         long hr = userRepository.countByUserType(UserType.hr);
         return new AdminDTO.StatsResponse(userRepository.count(), userRepository.countByUserType(UserType.job_seeker), hr, jobRepository.count(), applicationRepository.count(), hr * 499);
+    }
+
+    public AdminDTO.UserActivityResponse userActivity() {
+        OffsetDateTime now           = OffsetDateTime.now();
+        OffsetDateTime oneDayAgo    = now.minusDays(1);
+        OffsetDateTime sevenDaysAgo = now.minusDays(7);
+        OffsetDateTime thirtyDaysAgo= now.minusDays(30);
+
+        long totalUsers      = userRepository.count();
+        long verifiedUsers   = userRepository.countByVerifiedTrue();
+        long pendingUsers    = userRepository.countByVerifiedFalse();
+        long activeToday     = userRepository.countByLastLoginAfter(oneDayAgo);
+        long activeLast7Days = userRepository.countByLastLoginAfter(sevenDaysAgo);
+        long activeLast30Days= userRepository.countByLastLoginAfter(thirtyDaysAgo);
+        long neverLoggedIn   = userRepository.countByLastLoginIsNull();
+        long newLast7Days    = userRepository.countByCreatedAtAfter(sevenDaysAgo);
+        long newLast30Days   = userRepository.countByCreatedAtAfter(thirtyDaysAgo);
+        long activeSessions  = refreshTokenRepository.countByRevokedFalseAndExpiresAtAfter(now);
+
+        List<AdminDTO.UserRow> stuckPending = toRows(
+                userRepository.findTop20ByVerifiedFalseAndCreatedAtBeforeOrderByCreatedAtAsc(oneDayAgo));
+        List<AdminDTO.UserRow> recentSignups = toRows(
+                userRepository.findTop20ByOrderByCreatedAtDesc());
+        List<AdminDTO.UserRow> neverReturned = toRows(
+                userRepository.findTop20ByVerifiedTrueAndLastLoginIsNullOrderByCreatedAtDesc());
+
+        List<AdminDTO.CountryCount> topCountries = userRepository
+                .topCountries(PageRequest.of(0, 8)).stream()
+                .map(c -> new AdminDTO.CountryCount(c.getCountry(), c.getTotal()))
+                .collect(Collectors.toList());
+
+        return new AdminDTO.UserActivityResponse(
+                totalUsers, verifiedUsers, pendingUsers,
+                activeToday, activeLast7Days, activeLast30Days,
+                neverLoggedIn, newLast7Days, newLast30Days,
+                activeSessions, stuckPending, recentSignups, neverReturned, topCountries);
+    }
+
+    private List<AdminDTO.UserRow> toRows(List<User> users) {
+        return users.stream().map(u -> new AdminDTO.UserRow(
+                u.getId(), u.getEmail(), u.getUserType().name(), u.isVerified(),
+                u.getCreatedAt() != null  ? u.getCreatedAt().toString()  : null,
+                u.getLastLogin()  != null ? u.getLastLogin().toString()  : null
+        )).collect(Collectors.toList());
     }
 
     public Page<?> users(String search, Pageable pageable) {

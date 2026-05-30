@@ -46,6 +46,12 @@ public class AdminController {
         return adminService.stats();
     }
 
+    /** Detailed user-activity snapshot for the admin monitoring dashboard. */
+    @GetMapping("/users/activity")
+    public AdminDTO.UserActivityResponse userActivity() {
+        return adminService.userActivity();
+    }
+
     @GetMapping("/users")
     public Page<?> users(@RequestParam(required = false) String search, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
         return adminService.users(search, PageUtil.page(page, size));

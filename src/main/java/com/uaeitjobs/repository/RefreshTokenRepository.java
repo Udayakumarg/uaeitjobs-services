@@ -13,6 +13,9 @@ import java.util.Optional;
 public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long> {
     Optional<RefreshToken> findByToken(String token);
 
+    /** Count of non-revoked, non-expired tokens — proxy for active sessions. */
+    long countByRevokedFalseAndExpiresAtAfter(OffsetDateTime now);
+
     @Modifying
     void deleteByUser(User user);
 
