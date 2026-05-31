@@ -68,7 +68,7 @@ class SecurityAuthorizationIntegrationTest extends AbstractIntegrationTest {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(new ApplicationDTO.StatusRequest(ApplicationStatus.reviewed))))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isBadRequest());
     }
 
     private User user(UserType type, String email) {

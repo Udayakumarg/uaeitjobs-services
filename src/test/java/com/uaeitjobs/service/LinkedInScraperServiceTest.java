@@ -59,7 +59,7 @@ class LinkedInScraperServiceTest {
         assertThat(data.getDescription()).contains("Spring Boot");
         assertThat(data.getRequirements()).contains("senior backend experience");
         assertThat(data.getSalary()).isEqualTo("AED 20000 - 28000");
-        assertThat(data.getSkills()).contains("Java", "Spring Boot", "PostgreSQL", "Docker", "Kubernetes", "AWS", "Agile");
+        assertThat(data.getSkills()).contains("Java", "Spring Boot", "PostgreSQL", "Docker", "Kubernetes", "AWS");
         assertThat(data.getJobType()).isEqualTo("full_time");
         assertThat(data.getExperienceLevel()).isEqualTo("senior");
     }

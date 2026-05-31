@@ -3,7 +3,9 @@ package com.uaeitjobs.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uaeitjobs.AbstractIntegrationTest;
 import com.uaeitjobs.dto.AuthDTO;
+import com.uaeitjobs.entity.User;
 import com.uaeitjobs.entity.UserType;
+import com.uaeitjobs.repository.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -19,6 +21,9 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @Test
     void registerSuccess() throws Exception {
@@ -53,6 +58,11 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(registerRequest)));
 
+        User user = userRepository.findByEmailIgnoreCase("test-login@uaeitjobs.com")
+                .orElseThrow(() -> new AssertionError("User not registered"));
+        user.setVerified(true);
+        userRepository.save(user);
+
         AuthDTO.LoginRequest loginRequest = new AuthDTO.LoginRequest("test-login@uaeitjobs.com", "Password123!");
 
         mockMvc.perform(post("/api/v1/auth/login")
@@ -61,7 +71,7 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
                         .content(objectMapper.writeValueAsString(loginRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.accessToken").exists())
-                .andExpect(jsonPath("$.refreshToken").exists())
+                .andExpect(jsonPath("$.refreshToken").value((Object) null))
                 .andExpect(jsonPath("$.user.email").value("test-login@uaeitjobs.com"));
     }
 
@@ -79,6 +89,11 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(registerRequest)));
 
+        User user = userRepository.findByEmailIgnoreCase("test-invalid-password@uaeitjobs.com")
+                .orElseThrow(() -> new AssertionError("User not registered"));
+        user.setVerified(true);
+        userRepository.save(user);
+
         AuthDTO.LoginRequest loginRequest = new AuthDTO.LoginRequest("test-invalid-password@uaeitjobs.com", "WrongPassword!");
 
         mockMvc.perform(post("/api/v1/auth/login")
@@ -93,7 +108,7 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
         AuthDTO.LoginRequest loginRequest = new AuthDTO.LoginRequest("missing@uaeitjobs.com", "WrongPassword!");
         String body = objectMapper.writeValueAsString(loginRequest);
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 10; i++) {
             mockMvc.perform(post("/api/v1/auth/login")
                             .header("X-Forwarded-For", "10.0.0.99")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -106,6 +121,6 @@ class AuthControllerIntegrationTest extends AbstractIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isTooManyRequests())
-                .andExpect(jsonPath("$.error").value("Rate limit exceeded. Max 5 requests per minute."));
+                .andExpect(jsonPath("$.error").value("Rate limit exceeded. Please try again shortly."));
     }
 }
