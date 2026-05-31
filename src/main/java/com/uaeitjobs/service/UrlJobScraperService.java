@@ -164,7 +164,11 @@ public class UrlJobScraperService {
         // treat it as a generic site description and leave the field blank.
         String description = isJobDescription(rawDescription, title) ? rawDescription : "";
 
-        String location = metaProp(doc, "og:locality");  // sometimes present on ATS pages
+        // og:locality is rarely populated; fall back to inferring a UAE city from
+        // the page title or description when it is absent.
+        String location = coalesce(
+                metaProp(doc, "og:locality"),
+                inferUaeCity(coalesce(title, rawDescription)));
 
         boolean hasDescription = !description.isBlank();
         boolean complete = !title.isBlank() && hasDescription;
@@ -195,8 +199,14 @@ public class UrlJobScraperService {
                                               node.path("name").asText(""));
                 String company     = node.path("hiringOrganization").path("name").asText("");
                 String description = stripHtmlTags(node.path("description").asText(""));
-                String city        = node.path("jobLocation").path("address")
-                                        .path("addressLocality").asText("");
+                // jobLocation can be either an object or an array of Place objects.
+                // Both shapes are valid JSON-LD; handle whichever arrives.
+                JsonNode locNode = node.path("jobLocation");
+                if (locNode.isArray() && locNode.size() > 0) locNode = locNode.get(0);
+                JsonNode addrNode = locNode.path("address");
+                String city = coalesce(
+                        addrNode.path("addressLocality").asText(""),
+                        addrNode.path("addressRegion").asText(""));
 
                 if (title.isBlank()) continue;   // not a real JobPosting node
 
@@ -235,6 +245,24 @@ public class UrlJobScraperService {
     private String metaName(Document doc, String name) {
         Element el = doc.selectFirst("meta[name='" + name + "']");
         return el != null ? el.attr("content").strip() : "";
+    }
+
+    /**
+     * Scans free text for a UAE emirate name and returns it in display form.
+     * Used as a last-resort location signal when no structured field is present.
+     * Returns null when no UAE city is found.
+     */
+    private static String inferUaeCity(String text) {
+        if (text == null || text.isBlank()) return null;
+        String t = text.toLowerCase();
+        if (t.contains("abu dhabi"))     return "Abu Dhabi";
+        if (t.contains("ras al khaimah")) return "Ras Al Khaimah";
+        if (t.contains("umm al quwain")) return "Umm Al Quwain";
+        if (t.contains("dubai"))         return "Dubai";
+        if (t.contains("sharjah"))       return "Sharjah";
+        if (t.contains("ajman"))         return "Ajman";
+        if (t.contains("fujairah"))      return "Fujairah";
+        return null;
     }
 
     /** Returns the first non-blank value from the provided candidates. */
