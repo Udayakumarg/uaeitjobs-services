@@ -272,16 +272,9 @@ public class UrlJobScraperService {
             String company     = companyFromDomain(applyUrl);
 
             if (title == null) return null;
-            log.info("Greenhouse API: fetched '{}' for board={}", title, board);
+            log.info("Greenhouse API: fetched '{}' for board={} location='{}'", title, board, location);
 
-            return UrlImportDTO.Preview.builder()
-                    .title(title)
-                    .companyName(blankToNull(company))
-                    .description(blankToNull(description))
-                    .locationUae(blankToNull(inferUaeCity(location) != null ? inferUaeCity(location) : location))
-                    .applyUrl(applyUrl)
-                    .complete(!description.isBlank())
-                    .build();
+            return buildAtsPreview(title, company, description, location, applyUrl);
         } catch (Exception e) {
             log.warn("Greenhouse API failed for board={} job={}: {}", board, jobId, e.getMessage());
             return null;
@@ -327,16 +320,11 @@ public class UrlJobScraperService {
                     applyUrl);
 
             if (title == null) return null;
-            log.info("Lever API: fetched '{}' for company={}", title, company);
+            log.info("Lever API: fetched '{}' for company={} location='{}'", title, company, location);
 
-            return UrlImportDTO.Preview.builder()
-                    .title(title)
-                    .companyName(blankToNull(leverCompany.isBlank() ? company : leverCompany))
-                    .description(blankToNull(description))
-                    .locationUae(blankToNull(inferUaeCity(location) != null ? inferUaeCity(location) : blankToNull(location)))
-                    .applyUrl(hostedUrl)
-                    .complete(!description.isBlank())
-                    .build();
+            return buildAtsPreview(title,
+                    leverCompany.isBlank() ? company : leverCompany,
+                    description, location, hostedUrl);
         } catch (Exception e) {
             log.warn("Lever API failed for company={} job={}: {}", company, jobId, e.getMessage());
             return null;
@@ -380,20 +368,69 @@ public class UrlJobScraperService {
             String orgName     = job.path("organizationName").asText("");
 
             if (title == null) return null;
-            log.info("Ashby API: fetched '{}' for company={}", title, company);
+            log.info("Ashby API: fetched '{}' for company={} location='{}'", title, company, location);
 
-            return UrlImportDTO.Preview.builder()
-                    .title(title)
-                    .companyName(blankToNull(orgName.isBlank() ? company : orgName))
-                    .description(blankToNull(description))
-                    .locationUae(blankToNull(inferUaeCity(location) != null ? inferUaeCity(location) : blankToNull(location)))
-                    .applyUrl(applyUrl)
-                    .complete(!description.isBlank())
-                    .build();
+            return buildAtsPreview(title,
+                    orgName.isBlank() ? company : orgName,
+                    description, location, applyUrl);
         } catch (Exception e) {
             log.warn("Ashby API failed for company={} job={}: {}", company, jobId, e.getMessage());
             return null;
         }
+    }
+
+    // ── Shared ATS preview builder ────────────────────────────────────────────
+
+    /**
+     * Builds the final {@link UrlImportDTO.Preview} for any ATS API response.
+     *
+     * <ul>
+     *   <li>{@code locationUae} is set <em>only</em> when a UAE city is detected in
+     *       the raw location string.  Foreign city strings (e.g. "McLean, Virginia")
+     *       are never stored in {@code locationUae} — that field is UAE-only.</li>
+     *   <li>When the location is present but is not in the UAE, an amber warning is
+     *       added so the HR user is informed before clicking Import.</li>
+     *   <li>{@code complete} is {@code true} when we have at least a title + description.
+     *       A non-UAE location warning forces {@code complete=false} so the amber
+     *       banner is shown and the user must actively review.</li>
+     * </ul>
+     */
+    private static UrlImportDTO.Preview buildAtsPreview(
+            String title, String company, String description,
+            String rawLocation, String applyUrl) {
+
+        if (title == null || title.isBlank()) return null;
+
+        String uaeCity = inferUaeCity(rawLocation);       // null when not UAE
+        boolean hasDesc = description != null && !description.isBlank();
+        boolean hasNonUaeLocation = rawLocation != null
+                && !rawLocation.isBlank()
+                && uaeCity == null;
+
+        String message = null;
+        boolean complete = hasDesc;
+        if (hasNonUaeLocation) {
+            // Truncate long multi-location strings (Greenhouse sometimes returns
+            // "City A; City B; City C") to keep the message readable.
+            String locDisplay = rawLocation.length() > 80
+                    ? rawLocation.substring(0, 77) + "…"
+                    : rawLocation;
+            message = "⚠️ This job is located in " + locDisplay
+                    + " — outside the UAE. Confirm before importing.";
+            complete = false; // force amber review banner
+        } else if (!hasDesc) {
+            message = "Description could not be extracted. Fill it in before importing.";
+        }
+
+        return UrlImportDTO.Preview.builder()
+                .title(title)
+                .companyName(blankToNull(company))
+                .description(blankToNull(description))
+                .locationUae(uaeCity) // null for non-UAE — never stores foreign city strings
+                .applyUrl(applyUrl)
+                .complete(complete)
+                .message(message)
+                .build();
     }
 
     // ── JSON / API helpers ────────────────────────────────────────────────────
