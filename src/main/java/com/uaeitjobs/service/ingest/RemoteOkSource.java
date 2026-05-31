@@ -17,12 +17,16 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Pulls remote-worldwide tech jobs from the free RemoteOK API.
- * No auth required.
+ * RemoteOK source — DISABLED.
  *
- * UAE-based developers can apply to these, so we surface them with the
- * remote_uae flag set to true. Filter on the catalog with
- * /jobs?remoteUae=true to see only the remote roster.
+ * RemoteOK is a global remote job board. Every job is from a company based
+ * anywhere in the world (France, Germany, US, etc.) and is labelled
+ * "Remote (UAE-friendly)".  Testers flagged these as confusing on a
+ * UAE-specific job board — the company and role context are clearly non-UAE.
+ *
+ * Kept in codebase for reference; {@code app.ingest.remoteok.enabled} defaults
+ * to {@code false} and should NOT be set to {@code true} without a dedicated
+ * "Worldwide Remote" section in the product.
  */
 @Slf4j
 @Component

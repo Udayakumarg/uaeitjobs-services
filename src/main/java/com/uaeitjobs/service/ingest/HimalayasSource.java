@@ -17,12 +17,16 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Pulls global remote tech jobs from Himalayas's public API.
- * https://himalayas.app/jobs/api
+ * Himalayas source — DISABLED.
  *
- * Free, no auth. Roles here are remote-friendly — UAE-based engineers
- * can apply to almost any of them, so each posting is marked
- * remoteUae=true and appears under the existing Remote-UAE filter.
+ * Himalayas is a global remote job board. Jobs are from companies worldwide
+ * (US, EU, etc.) and are labelled "Remote (UAE-friendly)" regardless of
+ * employer location.  Testers flagged these as confusing on a UAE-specific
+ * job board — the company and role context are clearly non-UAE.
+ *
+ * Kept in codebase for reference; {@code app.ingest.himalayas.enabled} defaults
+ * to {@code false} and should NOT be set to {@code true} without a dedicated
+ * "Worldwide Remote" section in the product.
  */
 @Slf4j
 @Component

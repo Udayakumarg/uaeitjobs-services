@@ -68,6 +68,14 @@ public class RelevanceScorer {
                     "south africa|turkey|russia|poland|ukraine|romania)\\b"
     );
 
+    /**
+     * Generic "Remote" location label used by global remote job boards
+     * (RemoteOK, Himalayas) that have since been disabled. If a job somehow
+     * re-enters the pipeline with this label AND the description also signals
+     * a non-UAE employer, hard-reject it.
+     */
+    private static final String GENERIC_REMOTE_LABEL = "remote (uae-friendly)";
+
     public boolean hardReject(String title, String location, String country, String description) {
         if (title == null || title.isBlank()) return true;
         if (STRONG_NEGATIVE.matcher(title).find()) return true;
@@ -78,6 +86,17 @@ public class RelevanceScorer {
         String loc = safe(location).toLowerCase(Locale.ROOT);
         if (!loc.isBlank() && NON_UAE_COUNTRY.matcher(loc).find() && !UAE_LOCATION.matcher(loc).find()) {
             return true;
+        }
+
+        // Global remote job boards (RemoteOK, Himalayas) label every job
+        // "Remote (UAE-friendly)" regardless of where the employer is based.
+        // If the description also mentions a non-UAE country without any UAE
+        // reference, the job is not UAE-relevant — reject it.
+        if (GENERIC_REMOTE_LABEL.equals(loc)) {
+            String desc = safe(description).toLowerCase(Locale.ROOT);
+            if (NON_UAE_COUNTRY.matcher(desc).find() && !UAE_LOCATION.matcher(desc).find()) {
+                return true;
+            }
         }
 
         // Must be UAE-located in some field
