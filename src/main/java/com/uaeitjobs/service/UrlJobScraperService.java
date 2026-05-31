@@ -140,7 +140,14 @@ public class UrlJobScraperService {
         UrlImportDTO.Preview ld = tryJsonLd(doc, url);
         if (ld != null) return ld;
 
-        // 2. Open Graph / Twitter Card / meta description / <title>
+        // 2. Schema.org microdata — many ATSs (SAP SuccessFactors, Taleo, SmartRecruiters)
+        //    embed structured data via itemprop attributes rather than JSON-LD.
+        //    Check this BEFORE og:description because og:description is often set to just
+        //    the job title on these platforms (useless as a description).
+        UrlImportDTO.Preview microdata = tryMicrodata(doc, url);
+        if (microdata != null) return microdata;
+
+        // 3. Open Graph / Twitter Card / meta description / <title>
         String title = coalesce(
                 metaProp(doc, "og:title"),
                 metaName(doc, "twitter:title"),
@@ -184,6 +191,72 @@ public class UrlJobScraperService {
                 .complete(complete)
                 .message(message)
                 .build();
+    }
+
+    /**
+     * Extracts job data from Schema.org microdata attributes (itemprop="…").
+     *
+     * Many ATS platforms (SAP SuccessFactors, legacy Taleo, SmartRecruiters) use
+     * HTML microdata instead of JSON-LD. The page at careers.edgegroup.ae is a
+     * typical example: full description in {@code [itemprop="description"]} but
+     * {@code og:description} is just the job title.
+     *
+     * Returns null when the microdata description is absent or too short to be
+     * useful — fall-through continues to the og:* path.
+     */
+    private UrlImportDTO.Preview tryMicrodata(Document doc, String url) {
+        // Title: itemprop="title" (or fall back to the h1#job-title SuccessFactors uses)
+        String title = coalesce(
+                textOf(doc, "[itemprop='title']"),
+                textOf(doc, "h1#job-title"),
+                textOf(doc, "h1[itemprop='title']")
+        );
+        if (title == null || title.isBlank()) return null;
+
+        // Description: itemprop="description" — strip any embedded HTML tags
+        Element descEl = doc.selectFirst("[itemprop='description']");
+        if (descEl == null) return null;
+        String description = descEl.text().strip();
+        if (description.length() < 80) return null; // too short — likely just a snippet
+
+        // Company: itemprop="hiringOrganization" or og:site_name
+        String company = coalesce(
+                textOf(doc, "[itemprop='hiringOrganization']"),
+                metaProp(doc, "og:site_name"),
+                companyFromDomain(url)
+        );
+
+        // Location: SuccessFactors uses .jobGeoLocation; generic microdata uses
+        // itemprop="addressLocality" inside itemprop="jobLocation"
+        String location = coalesce(
+                textOf(doc, ".jobGeoLocation"),
+                textOf(doc, "[itemprop='addressLocality']"),
+                textOf(doc, "[itemprop='jobLocation']")
+        );
+        if (location == null || location.isBlank()) {
+            location = inferUaeCity(title + " " + description);
+        } else {
+            // Normalise: "Abu Dhabi, AE" → keep as-is; plain city → run through inferUaeCity
+            String inferred = inferUaeCity(location);
+            location = inferred != null ? inferred : location.trim();
+        }
+
+        return UrlImportDTO.Preview.builder()
+                .title(title)
+                .companyName(blankToNull(company))
+                .description(description)
+                .locationUae(blankToNull(location))
+                .applyUrl(url)
+                .complete(true)
+                .build();
+    }
+
+    /** Returns the trimmed text content of the first matching element, or null. */
+    private static String textOf(Document doc, String selector) {
+        Element el = doc.selectFirst(selector);
+        if (el == null) return null;
+        String t = el.text().strip();
+        return t.isEmpty() ? null : t;
     }
 
     private UrlImportDTO.Preview tryJsonLd(Document doc, String url) {
