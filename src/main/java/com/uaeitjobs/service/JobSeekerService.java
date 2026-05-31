@@ -76,6 +76,23 @@ public class JobSeekerService {
         return toResponse(profile);
     }
 
+    /**
+     * Idempotent apply-click tracker for external jobs.
+     * Records the application if one doesn't exist yet — silently no-ops if it does.
+     * No cover letter, no duplicate error — just a click-time bookmark that
+     * populates the applied/available sections on the Browse page.
+     */
+    @Transactional
+    public void trackApply(User user, Long jobId) {
+        Job job = jobRepository.findByIdAndActiveTrue(jobId)
+                .orElseThrow(() -> new ResourceNotFoundException("Job not found"));
+        if (applicationRepository.existsByJobAndUser(job, user)) return; // already tracked
+        ApplicationEntity application = new ApplicationEntity();
+        application.setJob(job);
+        application.setUser(user);
+        applicationRepository.save(application);
+    }
+
     @Transactional
     public ApplicationDTO.Response apply(User user, ApplicationDTO.Request request) {
         Job job = jobRepository.findByIdAndActiveTrue(request.jobId()).orElseThrow(() -> new ResourceNotFoundException("Job not found"));

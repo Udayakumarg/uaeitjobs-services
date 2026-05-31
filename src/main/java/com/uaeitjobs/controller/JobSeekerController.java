@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @RestController
@@ -48,6 +49,21 @@ public class JobSeekerController {
     @ResponseStatus(HttpStatus.CREATED)
     public ApplicationDTO.Response apply(@Valid @RequestBody ApplicationDTO.Request request) {
         return jobSeekerService.apply(currentUserService.get(), request);
+    }
+
+    /**
+     * Idempotent click tracker for external-link jobs.
+     * Called the moment a user clicks "Apply Now" on a Bayt / LinkedIn / etc. link,
+     * before the browser opens the external URL.  Records the intent to apply so
+     * the Browse page can show applied/available sections.
+     * Safe to call multiple times — second call is a silent no-op.
+     */
+    @PostMapping("/applications/track")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void trackApply(@RequestBody Map<String, Long> body) {
+        Long jobId = body.get("jobId");
+        if (jobId == null) return;
+        jobSeekerService.trackApply(currentUserService.get(), jobId);
     }
 
     @GetMapping("/applications")
