@@ -76,6 +76,23 @@ public class RelevanceScorer {
      */
     private static final String GENERIC_REMOTE_LABEL = "remote (uae-friendly)";
 
+    /**
+     * Signals that a remote job's scope is explicitly EU/EMEA/non-UAE.
+     * JSearch occasionally surfaces global remote roles (salary in euros,
+     * EU work-authorisation required) that were tagged with a UAE city
+     * purely because the search query included "UAE".
+     */
+    private static final Pattern EU_REMOTE_SIGNAL = Pattern.compile(
+            "(?i)(?:" +
+                // Salary denominated in non-AED currencies
+                "(?:€|£|eur\\b|gbp\\b|\\b\\d+[,.]?\\d*k?\\s*/\\s*(?:year|yr|annum|month)\\s*(?:eur|gbp|€|£))" +
+                // Explicit EU/EMEA work-authorisation requirement
+                "|(?:authorized?\\s+to\\s+work\\s+in\\s+(?:the\\s+)?(?:eu|europe|uk|united\\s+kingdom|emea))" +
+                // Geo scope explicitly EU/EMEA without UAE
+                "|(?:\\blocation\\s*:\\s*(?:emea|europe|eu\\b|remote\\s+emea|remote\\s+europe))" +
+                ")"
+    );
+
     public boolean hardReject(String title, String location, String country, String description) {
         if (title == null || title.isBlank()) return true;
         if (STRONG_NEGATIVE.matcher(title).find()) return true;
@@ -97,6 +114,14 @@ public class RelevanceScorer {
             if (NON_UAE_COUNTRY.matcher(desc).find() && !UAE_LOCATION.matcher(desc).find()) {
                 return true;
             }
+        }
+
+        // JSearch sometimes surfaces EU/EMEA remote roles that were matched
+        // against UAE keywords but are clearly scoped to Europe (salary in
+        // euros, EU work-authorisation required, etc.) without any UAE mention.
+        String desc = safe(description);
+        if (EU_REMOTE_SIGNAL.matcher(desc).find() && !UAE_LOCATION.matcher(desc).find()) {
+            return true;
         }
 
         // Must be UAE-located in some field
