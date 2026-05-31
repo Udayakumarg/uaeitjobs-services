@@ -10,12 +10,19 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
+import java.util.Set;
 
 public interface ApplicationRepository extends JpaRepository<ApplicationEntity, Long> {
     boolean existsByJobAndUser(Job job, User user);
     Page<ApplicationEntity> findByUser(User user, Pageable pageable);
     Page<ApplicationEntity> findByJob(Job job, Pageable pageable);
     long countByJob(Job job);
+
+    /** Returns the set of job IDs the user has applied to — used by the
+     *  Browse page to render applied/unapplied sections without loading
+     *  full application objects. */
+    @Query("SELECT a.job.id FROM ApplicationEntity a WHERE a.user = :user")
+    Set<Long> findJobIdsByUser(@Param("user") User user);
 
     /**
      * Compound query that verifies both existence AND ownership in one DB round-trip,

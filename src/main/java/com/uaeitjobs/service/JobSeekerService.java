@@ -20,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -99,6 +100,11 @@ public class JobSeekerService {
         Pageable byAppliedAt = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
                 Sort.by(Sort.Direction.DESC, "appliedAt"));
         return applicationRepository.findByUser(user, byAppliedAt).map(applicationMapper::toResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public Set<Long> appliedJobIds(User user) {
+        return applicationRepository.findJobIdsByUser(user);
     }
 
     @Transactional(readOnly = true)

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -52,6 +53,17 @@ public class JobSeekerController {
     @GetMapping("/applications")
     public Page<ApplicationDTO.Response> applications(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
         return jobSeekerService.applications(currentUserService.get(), PageUtil.page(page, size));
+    }
+
+    /**
+     * Returns the set of job IDs the current user has applied to.
+     * Used by the Browse page to mark applied jobs and split the list
+     * into applied / available sections — avoids loading full application
+     * objects just to get IDs.
+     */
+    @GetMapping("/applications/job-ids")
+    public Set<Long> appliedJobIds() {
+        return jobSeekerService.appliedJobIds(currentUserService.get());
     }
 
     @GetMapping("/saved-jobs")
