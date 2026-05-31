@@ -8,6 +8,7 @@ import com.uaeitjobs.repository.IngestRunLogRepository;
 import com.uaeitjobs.service.AdminService;
 import com.uaeitjobs.service.CurrentUserService;
 import com.uaeitjobs.service.DemoJobSeedService;
+import com.uaeitjobs.service.PlaywrightTriggerService;
 import com.uaeitjobs.service.ingest.IngestedJob;
 import com.uaeitjobs.service.ingest.JobIngestService;
 import com.uaeitjobs.util.PageUtil;
@@ -40,6 +41,7 @@ public class AdminController {
     private final JobIngestService jobIngestService;
     private final IngestRunLogRepository ingestRunLogRepository;
     private final JobService jobService;
+    private final PlaywrightTriggerService playwrightTriggerService;
 
     @GetMapping("/stats")
     public AdminDTO.StatsResponse stats() {
@@ -181,6 +183,37 @@ public class AdminController {
                 "inserted",   c.inserted,
                 "duplicates", c.duplicatesL1 + c.duplicatesL2 + c.duplicatesL3,
                 "rejected",   c.rejectedHard + c.rejectedScore
+        );
+    }
+
+    /**
+     * Trigger a Playwright scraper run for a specific source.
+     * The request is forwarded to the Node.js trigger server running on the host.
+     * Returns immediately — the scraper runs in the background.
+     *
+     * Valid sources: bayt | naukrigulf | gulftalent | linkedin
+     */
+    @PostMapping("/scraper/trigger/{source}")
+    public Map<String, Object> triggerScraper(@PathVariable String source) {
+        PlaywrightTriggerService.TriggerResult result = playwrightTriggerService.trigger(source);
+        return Map.of(
+                "status",  result.status().name().toLowerCase(),
+                "message", result.message(),
+                "source",  source
+        );
+    }
+
+    /**
+     * Returns the running/idle status of each Playwright scraper source
+     * as reported by the trigger server.
+     */
+    @GetMapping("/scraper/status")
+    public Map<String, Object> scraperStatus() {
+        Map<String, String> sourceStatus = playwrightTriggerService.status();
+        boolean serverReachable = !sourceStatus.isEmpty();
+        return Map.of(
+                "serverReachable", serverReachable,
+                "sources", sourceStatus
         );
     }
 
