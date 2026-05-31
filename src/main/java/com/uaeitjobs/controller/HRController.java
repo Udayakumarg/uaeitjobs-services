@@ -87,6 +87,7 @@ public class HRController {
                     .title(ld.getTitle())
                     .companyName(ld.getCompanyName())
                     .description(ld.getDescription())
+                    .locationUae(ld.getLocation())
                     .applyUrl(url)
                     .complete(true)
                     .build();

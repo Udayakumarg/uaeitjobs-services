@@ -56,6 +56,7 @@ public class LinkedInScraperService {
                 .companyName(companyName)
                 .description(description)
                 .requirements(requirements)
+                .location(extractLocation(doc, title, description))
                 .salary(extractSalary(doc))
                 .skills(extractSkills(description, requirements))
                 .jobType(extractJobType(doc))
@@ -93,6 +94,38 @@ public class LinkedInScraperService {
                 "span.jobs-details-top-card__company-name",
                 "h3.base-main-card__title");
         return company.isBlank() ? "Unknown Company" : company;
+    }
+
+    private String extractLocation(Document doc, String title, String description) {
+        // Try LinkedIn's known location CSS selectors (both old and new card layouts)
+        String loc = textOfFirst(doc,
+                "span.jobs-details-top-card__bullet",          // classic layout — first bullet is location
+                ".jobs-unified-top-card__bullet",              // unified layout
+                ".topcard__flavor--bullet",                    // older public page layout
+                "span[class*='tvm__text--positive']",          // salary/location metadata chips
+                "[data-test-job-poster-location]"
+        );
+        if (!loc.isBlank()) return inferUaeCity(loc);
+
+        // Fall back to scanning the title + description for a UAE city name
+        return inferUaeCity(title + " " + description);
+    }
+
+    /**
+     * Returns the most specific UAE city found in {@code text}, or null when none match.
+     * Multi-word names are checked before their substrings ("Abu Dhabi" before "Abu").
+     */
+    private static String inferUaeCity(String text) {
+        if (text == null || text.isBlank()) return null;
+        String t = text.toLowerCase();
+        if (t.contains("abu dhabi"))      return "Abu Dhabi";
+        if (t.contains("ras al khaimah")) return "Ras Al Khaimah";
+        if (t.contains("umm al quwain")) return "Umm Al Quwain";
+        if (t.contains("dubai"))          return "Dubai";
+        if (t.contains("sharjah"))        return "Sharjah";
+        if (t.contains("ajman"))          return "Ajman";
+        if (t.contains("fujairah"))       return "Fujairah";
+        return null;
     }
 
     private String extractDescription(Document doc) {

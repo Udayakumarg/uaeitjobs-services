@@ -22,6 +22,7 @@ public class LinkedInJobData {
     private String requirements;
     @NotBlank
     private String companyName;
+    private String location;
     private String salary;
     @NotEmpty
     private List<String> skills;
