@@ -33,6 +33,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
     /** Verified users who have never signed in after email confirmation. */
     List<User> findTop20ByVerifiedTrueAndLastLoginIsNullOrderByCreatedAtDesc();
 
+    /** Verified users who never signed in and were created before the given cutoff (for friction signals). */
+    List<User> findByVerifiedTrueAndLastLoginIsNullAndCreatedAtBefore(OffsetDateTime cutoff);
+
+    /** Unverified users created before the given cutoff (stuck pending, configurable threshold). */
+    List<User> findByVerifiedFalseAndCreatedAtBefore(OffsetDateTime cutoff);
+
     @Query("SELECT u.country AS country, COUNT(u) AS total FROM User u " +
            "WHERE u.country IS NOT NULL AND u.country <> '' " +
            "GROUP BY u.country ORDER BY COUNT(u) DESC")

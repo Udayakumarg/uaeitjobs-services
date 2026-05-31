@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -31,6 +32,7 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserMapper userMapper;
     private final EmailService emailService;
+    private final LoginAttemptService loginAttemptService;
 
     @Value("${app.jwt.refresh-token-days}")
     private long refreshTokenDays;
@@ -63,14 +65,29 @@ public class AuthService {
 
     @Transactional
     public AuthDTO.AuthResponse login(AuthDTO.LoginRequest request) {
-        User user = userRepository.findByEmailIgnoreCase(request.email()).orElseThrow(() -> new UnauthorizedException("Invalid credentials"));
-        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+        String email = request.email().trim().toLowerCase();
+
+        Optional<User> userOpt = userRepository.findByEmailIgnoreCase(email);
+        if (userOpt.isEmpty()) {
+            // Record before throwing — REQUIRES_NEW in loginAttemptService ensures
+            // this commit survives even though our transaction is about to throw.
+            loginAttemptService.record(null, email, false, LoginFailureReason.USER_NOT_FOUND);
             throw new UnauthorizedException("Invalid credentials");
         }
+        User user = userOpt.get();
+
+        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+            loginAttemptService.record(user, email, false, LoginFailureReason.INVALID_PASSWORD);
+            throw new UnauthorizedException("Invalid credentials");
+        }
+
         if (!user.isVerified()) {
+            loginAttemptService.record(user, email, false, LoginFailureReason.EMAIL_NOT_VERIFIED);
             throw new UnauthorizedException("Please verify your email address before logging in");
         }
+
         user.setLastLogin(OffsetDateTime.now());
+        loginAttemptService.record(user, email, true, null);
         return issueTokens(user);
     }
 

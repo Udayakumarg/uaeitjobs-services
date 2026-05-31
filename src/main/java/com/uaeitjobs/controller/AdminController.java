@@ -76,6 +76,19 @@ public class AdminController {
         adminService.resendVerification(id);
     }
 
+    /** Proactively detected friction signals — accounts that may need a nudge. */
+    @GetMapping("/users/friction-signals")
+    public List<AdminDTO.FrictionSignal> frictionSignals() {
+        return adminService.frictionSignals();
+    }
+
+    /** Send a proactive welcome / onboarding email to a user. */
+    @PostMapping("/users/{id}/send-welcome")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void sendWelcome(@PathVariable Long id) {
+        adminService.sendWelcome(id);
+    }
+
     /** Create a new user of any type (including admin) — pre-verified, no email required. */
     @PostMapping("/users")
     @ResponseStatus(HttpStatus.CREATED)

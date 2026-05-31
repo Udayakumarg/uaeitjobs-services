@@ -108,6 +108,34 @@ public class EmailService {
         sendEmailOrLog(toEmail, "Reset your UAEITJOBS password", html);
     }
 
+    /**
+     * Proactive welcome email triggered by an admin from the friction signals table.
+     * HR users get onboarding guidance; job seekers get profile-completion tips.
+     */
+    public void sendWelcomeEmail(String toEmail, com.uaeitjobs.entity.UserType userType, String displayName) {
+        String name = (displayName != null && !displayName.isBlank()) ? displayName : toEmail;
+        String html;
+        String subject;
+        if (userType == com.uaeitjobs.entity.UserType.hr) {
+            subject = "Get started on UAEITJOBS — post your first job in minutes";
+            html = layout(subject,
+                block("Welcome to UAEITJOBS, " + escapeHtml(name) + "!") +
+                text("Your employer account is set up and ready. Here's how to attract top UAE IT talent in three steps:") +
+                highlight("1. Post a job &nbsp;→ 2. Review applicants &nbsp;→ 3. Shortlist or hire") +
+                cta(frontendUrl + "/hr/jobs/new", "Post Your First Job") +
+                muted("Questions? Reply to this email or visit uaeitjobs.com"));
+        } else {
+            subject = "Your UAEITJOBS profile is ready — complete it to get noticed";
+            html = layout(subject,
+                block("Welcome to UAEITJOBS, " + escapeHtml(name) + "!") +
+                text("Your account is active. Complete your profile to stand out to UAE tech employers:") +
+                highlight("Add your headline · Upload your CV · List your skills") +
+                cta(frontendUrl + "/seeker/profile", "Complete Your Profile") +
+                muted("Questions? Reply to this email or visit uaeitjobs.com"));
+        }
+        sendEmailOrLog(toEmail, subject, html);
+    }
+
     public void sendApplicationStatusUpdate(String toEmail, String jobTitle, String status) {
         String heading = switch (status) {
             case "shortlisted" -> "You've been shortlisted";
