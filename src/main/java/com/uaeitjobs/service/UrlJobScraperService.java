@@ -254,14 +254,16 @@ public class UrlJobScraperService {
      */
     private static String inferUaeCity(String text) {
         if (text == null || text.isBlank()) return null;
-        String t = text.toLowerCase();
-        if (t.contains("abu dhabi"))     return "Abu Dhabi";
+        // Normalise hyphens → spaces so "Ras al-Khaimah" and "Umm al-Quwain"
+        // (LinkedIn's spelling) match the same patterns as the space forms.
+        String t = text.toLowerCase().replace('-', ' ');
+        if (t.contains("abu dhabi"))      return "Abu Dhabi";
         if (t.contains("ras al khaimah")) return "Ras Al Khaimah";
-        if (t.contains("umm al quwain")) return "Umm Al Quwain";
-        if (t.contains("dubai"))         return "Dubai";
-        if (t.contains("sharjah"))       return "Sharjah";
-        if (t.contains("ajman"))         return "Ajman";
-        if (t.contains("fujairah"))      return "Fujairah";
+        if (t.contains("umm al quwain"))  return "Umm Al Quwain";
+        if (t.contains("dubai"))          return "Dubai";
+        if (t.contains("sharjah"))        return "Sharjah";
+        if (t.contains("ajman"))          return "Ajman";
+        if (t.contains("fujairah"))       return "Fujairah";
         return null;
     }
 

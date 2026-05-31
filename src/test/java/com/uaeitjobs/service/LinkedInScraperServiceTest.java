@@ -38,7 +38,7 @@ class LinkedInScraperServiceTest {
                   <body>
                     <h1 class="top-card-layout__title">Senior Java Developer</h1>
                     <a class="topcard__org-name-link">Emirates Cloud Labs</a>
-                    <span class="jobs-details-top-card__bullet">Dubai, UAE</span>
+                    <span class="topcard__flavor topcard__flavor--bullet">Ras al-Khaimah, United Arab Emirates</span>
                     <div class="show-more-less-html__markup">
                       Build Spring Boot services with Java, PostgreSQL, Docker, Kubernetes, and AWS.
                     </div>
@@ -57,7 +57,7 @@ class LinkedInScraperServiceTest {
 
         assertThat(data.getTitle()).isEqualTo("Senior Java Developer");
         assertThat(data.getCompanyName()).isEqualTo("Emirates Cloud Labs");
-        assertThat(data.getLocation()).isEqualTo("Dubai");
+        assertThat(data.getLocation()).isEqualTo("Ras Al Khaimah");
         assertThat(data.getDescription()).contains("Spring Boot");
         assertThat(data.getRequirements()).contains("senior backend experience");
         assertThat(data.getSalary()).isEqualTo("AED 20000 - 28000");
