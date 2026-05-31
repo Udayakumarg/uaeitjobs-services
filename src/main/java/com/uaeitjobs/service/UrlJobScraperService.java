@@ -4,37 +4,57 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uaeitjobs.dto.UrlImportDTO;
 import com.uaeitjobs.exception.ValidationException;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.InetAddress;
+import java.net.URI;
 import java.net.URL;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
- * Scrapes a public HTTPS job-posting URL and returns whatever structured data
- * it can extract — without ever needing a JS engine.
+ * Scrapes a public HTTPS job-posting URL and returns structured job data.
  *
- * <h3>Extraction strategy (highest → lowest fidelity)</h3>
+ * <h3>Extraction pipeline (highest → lowest fidelity)</h3>
  * <ol>
- *   <li>JSON-LD {@code JobPosting} schema — most modern ATS / career sites embed
- *       this for SEO (Greenhouse, Lever, Workday, Taleo, SAP SF, many custom sites).</li>
- *   <li>Open Graph meta properties ({@code og:title}, {@code og:description},
- *       {@code og:site_name}).</li>
- *   <li>{@code <meta name="description">} and {@code <title>} tag fallbacks.</li>
+ *   <li><b>Direct ATS API</b> — for Lever and Ashby board URLs the company slug
+ *       and job ID are in the URL path; call their public APIs immediately,
+ *       no HTML fetch needed.</li>
+ *   <li><b>Embedded ATS API</b> — for Greenhouse jobs embedded on company career
+ *       pages (URL has {@code ?gh_jid=…}), fetch the page to get the board slug
+ *       then call the Greenhouse public API.</li>
+ *   <li><b>JSON-LD</b> — {@code <script type="application/ld+json">} JobPosting.
+ *       Most modern ATS/career sites include this for SEO.</li>
+ *   <li><b>Schema.org microdata</b> — {@code itemprop="description"} etc.
+ *       Used by SAP SuccessFactors, legacy Taleo, SmartRecruiters.</li>
+ *   <li><b>Open Graph / meta</b> — {@code og:title}, {@code og:description},
+ *       {@code og:site_name}.</li>
+ *   <li><b>Playwright</b> — last resort for JS-rendered shells (Avature,
+ *       Workday web views, iCIMS).</li>
  * </ol>
  *
- * <h3>JS-rendered ATSs (Avature, Workday *web views*, iCIMS)</h3>
- * These pages render job content client-side, so Jsoup only sees the shell HTML.
- * Title and company are usually still present in {@code og:*} meta tags (put
- * there by the SSR layer for link-preview crawlers).  The description will be
- * null — the caller should surface an "edit before saving" UI.
+ * <h3>Adding new ATS extractors</h3>
+ * <ul>
+ *   <li>Direct board URL: add a {@code tryXxxDirect(url)} method and call it
+ *       inside {@link #tryDirectAts}.</li>
+ *   <li>Embedded widget: add a {@code tryXxxEmbedded(doc, url)} method and call
+ *       it inside {@link #tryEmbeddedAts}.</li>
+ * </ul>
  *
  * <h3>SSRF protection</h3>
  * Private, loopback, link-local and multicast addresses are rejected before any
@@ -42,20 +62,43 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class UrlJobScraperService {
 
-    // Well-known ATS hostnames whose subdomain or path contains the employer name,
-    // not a useful "company" string.
+    // Well-known ATS hostnames — used by companyFromDomain() to avoid deriving
+    // the employer name from a generic ATS subdomain.
     private static final Set<String> ATS_HOSTS = Set.of(
             "workday.com", "greenhouse.io", "lever.co", "taleo.net",
             "avature.net", "smartrecruiters.com", "brassring.com",
             "icims.com", "successfactors.com", "jobvite.com",
-            "ultipro.com", "paylocity.com"
+            "ultipro.com", "paylocity.com", "ashbyhq.com"
     );
+
+    // ── URL patterns for direct ATS board URLs ────────────────────────────────
+    private static final Pattern LEVER_URL =
+            Pattern.compile("https://(?:jobs|hire)\\.lever\\.co/([^/]+)/([^/?#]+)");
+    private static final Pattern ASHBY_URL =
+            Pattern.compile("https://jobs\\.ashbyhq\\.com/([^/]+)/([^/?#]+)");
+    private static final Pattern GH_DIRECT_URL =
+            Pattern.compile("https://boards\\.greenhouse\\.io/([^/]+)/jobs/(\\d+)");
+    // Greenhouse embedded on company site: ?gh_jid=NNNNN
+    private static final Pattern GH_JID_PARAM = Pattern.compile("[?&]gh_jid=(\\d+)");
+    // Greenhouse board script: boards.greenhouse.io/embed/job_board/js?for=SLUG
+    private static final Pattern GH_BOARD_SLUG = Pattern.compile("boards\\.greenhouse\\.io/embed/job_board/js\\?for=([^&\"']+)");
 
     private final ObjectMapper objectMapper;
     private final PlaywrightScraperService playwrightScraperService;
+    private final RestTemplate http;
+
+    public UrlJobScraperService(ObjectMapper objectMapper,
+                                PlaywrightScraperService playwrightScraperService,
+                                RestTemplateBuilder builder) {
+        this.objectMapper = objectMapper;
+        this.playwrightScraperService = playwrightScraperService;
+        this.http = builder
+                .setConnectTimeout(Duration.ofSeconds(8))
+                .setReadTimeout(Duration.ofSeconds(15))
+                .build();
+    }
 
     // ── Public entry point ────────────────────────────────────────────────────
 
@@ -71,6 +114,12 @@ public class UrlJobScraperService {
         validateNoSsrf(url);
 
         try {
+            // ── Phase 1: Direct ATS board URLs (Lever, Ashby, direct Greenhouse) ──
+            // These encode the company + job ID in the URL path — no HTML fetch needed.
+            UrlImportDTO.Preview direct = tryDirectAts(url);
+            if (direct != null) return direct;
+
+            // ── Phase 2: Fetch HTML ───────────────────────────────────────────────
             Document doc = Jsoup.connect(url)
                     .userAgent("Mozilla/5.0 (compatible; UAEITBot/1.0; +https://www.uaeitjobs.com)")
                     .header("Accept-Language", "en-US,en;q=0.9")
@@ -78,7 +127,14 @@ public class UrlJobScraperService {
                     .followRedirects(true)
                     .get();
 
-            // First attempt: parse the static (non-JS-rendered) HTML
+            // ── Phase 3: Embedded ATS widget detected in page HTML ────────────────
+            // Company career pages often embed Greenhouse / Workable via a <script>
+            // tag.  We extract the board slug + job ID and call the ATS API directly
+            // instead of trying to parse the (JS-rendered) job content from HTML.
+            UrlImportDTO.Preview embedded = tryEmbeddedAts(doc, url);
+            if (embedded != null) return embedded;
+
+            // ── Phase 4: Generic HTML parsing pipeline ────────────────────────────
             UrlImportDTO.Preview staticPreview = parseDocument(doc, url);
             if (staticPreview.isComplete()) return staticPreview;
 
@@ -130,6 +186,222 @@ public class UrlJobScraperService {
                             + "). Fill in the details manually and click Import.")
                     .build();
         }
+    }
+
+    // ── ATS API extractors ────────────────────────────────────────────────────
+
+    /**
+     * Phase 1 — direct ATS board URLs where the company slug and job ID are
+     * encoded in the URL path.  Returns null when the URL doesn't match any
+     * known pattern, allowing fall-through to the HTML fetch.
+     *
+     * To add a new ATS: implement {@code tryXxxDirect(url)} and add a call here.
+     */
+    private UrlImportDTO.Preview tryDirectAts(String url) {
+        UrlImportDTO.Preview result;
+        if ((result = tryLeverDirect(url))  != null) return result;
+        if ((result = tryAshbyDirect(url))  != null) return result;
+        if ((result = tryGhDirect(url))     != null) return result;
+        return null;
+    }
+
+    /**
+     * Phase 3 — ATS widget embedded on a company career page.  The HTML doc is
+     * already fetched; we look for ATS-specific script tags to get the board slug.
+     *
+     * To add a new ATS: implement {@code tryXxxEmbedded(doc, url)} and add a call here.
+     */
+    private UrlImportDTO.Preview tryEmbeddedAts(Document doc, String url) {
+        UrlImportDTO.Preview result;
+        if ((result = tryGreenhouseEmbedded(doc, url)) != null) return result;
+        return null;
+    }
+
+    // ── Greenhouse ────────────────────────────────────────────────────────────
+
+    /**
+     * Handles direct Greenhouse board URLs:
+     * {@code https://boards.greenhouse.io/{company}/jobs/{id}}
+     */
+    private UrlImportDTO.Preview tryGhDirect(String url) {
+        Matcher m = GH_DIRECT_URL.matcher(url);
+        if (!m.find()) return null;
+        return callGreenhouseApi(m.group(1), m.group(2), url);
+    }
+
+    /**
+     * Handles Greenhouse jobs embedded on company career pages.
+     * Detects {@code ?gh_jid=NNNNN} in the URL, then finds the board slug
+     * from the embedded {@code <script src="...boards.greenhouse.io/...?for=SLUG">} tag.
+     */
+    private UrlImportDTO.Preview tryGreenhouseEmbedded(Document doc, String url) {
+        Matcher jobIdM = GH_JID_PARAM.matcher(url);
+        if (!jobIdM.find()) return null;
+        String jobId = jobIdM.group(1);
+
+        // Extract board slug from the Greenhouse embed script tag in the page HTML
+        String boardSlug = null;
+        for (Element script : doc.select("script[src*='boards.greenhouse.io']")) {
+            Matcher slugM = GH_BOARD_SLUG.matcher(script.attr("src"));
+            if (slugM.find()) { boardSlug = slugM.group(1); break; }
+        }
+        if (boardSlug == null || boardSlug.isBlank()) {
+            log.debug("Greenhouse: gh_jid={} found but no board slug in page HTML for {}", jobId, url);
+            return null;
+        }
+        log.info("Greenhouse: gh_jid={} board={} — calling public API", jobId, boardSlug);
+        return callGreenhouseApi(boardSlug, jobId, url);
+    }
+
+    private UrlImportDTO.Preview callGreenhouseApi(String board, String jobId, String applyUrl) {
+        try {
+            URI uri = UriComponentsBuilder
+                    .fromUriString("https://boards-api.greenhouse.io/v1/boards/{board}/jobs/{id}")
+                    .buildAndExpand(board, jobId)
+                    .toUri();
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Accept", "application/json");
+            JsonNode node = http.exchange(uri, HttpMethod.GET,
+                    new HttpEntity<>(headers), JsonNode.class).getBody();
+            if (node == null) return null;
+
+            String title       = optText(node, "title");
+            String description = stripHtmlTags(optText(node, "content"));  // content is HTML
+            String location    = node.path("location").path("name").asText("");
+            String company     = companyFromDomain(applyUrl);
+
+            if (title == null) return null;
+            log.info("Greenhouse API: fetched '{}' for board={}", title, board);
+
+            return UrlImportDTO.Preview.builder()
+                    .title(title)
+                    .companyName(blankToNull(company))
+                    .description(blankToNull(description))
+                    .locationUae(blankToNull(inferUaeCity(location) != null ? inferUaeCity(location) : location))
+                    .applyUrl(applyUrl)
+                    .complete(!description.isBlank())
+                    .build();
+        } catch (Exception e) {
+            log.warn("Greenhouse API failed for board={} job={}: {}", board, jobId, e.getMessage());
+            return null;
+        }
+    }
+
+    // ── Lever ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Handles Lever direct board URLs:
+     * {@code https://jobs.lever.co/{company}/{uuid}}
+     * {@code https://hire.lever.co/{company}/{uuid}}
+     */
+    private UrlImportDTO.Preview tryLeverDirect(String url) {
+        Matcher m = LEVER_URL.matcher(url);
+        if (!m.find()) return null;
+        return callLeverApi(m.group(1), m.group(2), url);
+    }
+
+    private UrlImportDTO.Preview callLeverApi(String company, String jobId, String applyUrl) {
+        try {
+            URI uri = UriComponentsBuilder
+                    .fromUriString("https://api.lever.co/v0/postings/{company}/{id}")
+                    .buildAndExpand(company, jobId)
+                    .toUri();
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Accept", "application/json");
+            JsonNode node = http.exchange(uri, HttpMethod.GET,
+                    new HttpEntity<>(headers), JsonNode.class).getBody();
+            if (node == null) return null;
+
+            String title       = optText(node, "text");
+            // Lever returns description as HTML; plain text fallback via descriptionPlain
+            String description = coalesce(
+                    stripHtmlTags(optText(node, "description")),
+                    optText(node, "descriptionPlain"));
+            String location    = node.path("categories").path("location").asText("");
+            String leverCompany= node.path("company").asText("");
+            String hostedUrl   = coalesce(
+                    optText(node, "hostedUrl"),
+                    optText(node, "applyUrl"),
+                    applyUrl);
+
+            if (title == null) return null;
+            log.info("Lever API: fetched '{}' for company={}", title, company);
+
+            return UrlImportDTO.Preview.builder()
+                    .title(title)
+                    .companyName(blankToNull(leverCompany.isBlank() ? company : leverCompany))
+                    .description(blankToNull(description))
+                    .locationUae(blankToNull(inferUaeCity(location) != null ? inferUaeCity(location) : blankToNull(location)))
+                    .applyUrl(hostedUrl)
+                    .complete(!description.isBlank())
+                    .build();
+        } catch (Exception e) {
+            log.warn("Lever API failed for company={} job={}: {}", company, jobId, e.getMessage());
+            return null;
+        }
+    }
+
+    // ── Ashby ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Handles Ashby direct board URLs:
+     * {@code https://jobs.ashbyhq.com/{company}/{uuid}}
+     */
+    private UrlImportDTO.Preview tryAshbyDirect(String url) {
+        Matcher m = ASHBY_URL.matcher(url);
+        if (!m.find()) return null;
+        return callAshbyApi(m.group(1), m.group(2), url);
+    }
+
+    private UrlImportDTO.Preview callAshbyApi(String company, String jobId, String applyUrl) {
+        try {
+            // Ashby public posting API
+            URI uri = UriComponentsBuilder
+                    .fromUriString("https://api.ashbyhq.com/posting-api/job-board/{company}/job/{id}")
+                    .buildAndExpand(company, jobId)
+                    .toUri();
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Accept", "application/json");
+            JsonNode node = http.exchange(uri, HttpMethod.GET,
+                    new HttpEntity<>(headers), JsonNode.class).getBody();
+            if (node == null) return null;
+
+            // Ashby wraps in { job: { ... } }
+            JsonNode job = node.has("job") ? node.path("job") : node;
+
+            String title       = optText(job, "title");
+            String description = stripHtmlTags(optText(job, "descriptionHtml"));
+            if (description == null || description.isBlank())
+                description = optText(job, "descriptionPlain");
+            String location    = job.path("locationName").asText("");
+            String orgName     = job.path("organizationName").asText("");
+
+            if (title == null) return null;
+            log.info("Ashby API: fetched '{}' for company={}", title, company);
+
+            return UrlImportDTO.Preview.builder()
+                    .title(title)
+                    .companyName(blankToNull(orgName.isBlank() ? company : orgName))
+                    .description(blankToNull(description))
+                    .locationUae(blankToNull(inferUaeCity(location) != null ? inferUaeCity(location) : blankToNull(location)))
+                    .applyUrl(applyUrl)
+                    .complete(!description.isBlank())
+                    .build();
+        } catch (Exception e) {
+            log.warn("Ashby API failed for company={} job={}: {}", company, jobId, e.getMessage());
+            return null;
+        }
+    }
+
+    // ── JSON / API helpers ────────────────────────────────────────────────────
+
+    private static String optText(JsonNode node, String field) {
+        if (node == null || !node.has(field) || node.get(field).isNull()) return null;
+        String v = node.get(field).asText();
+        return v == null || v.isBlank() ? null : v;
     }
 
     // ── Parsing ───────────────────────────────────────────────────────────────
