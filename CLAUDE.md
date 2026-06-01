@@ -1,44 +1,49 @@
-# UAEITJobs Backend — Claude Context
+# UAEITJobs Backend — Claude Context (auto-loaded)
 
-Spring Boot backend for UAEITJobs. Live at https://www.uaeitjobs.com (port 8081 in Docker).
+Spring Boot backend · Live at https://www.uaeitjobs.com · Port 8081 in Docker
 
-## Read at session start
-Full memory is in the **frontend repo** at `C:\Users\inbox\uaeitjobs\uaeitjobs-fe\.claude\memory\`:
-1. `00_bootstrap/SESSION_BOOTSTRAP.md` — VPS access, commit style, key commands
-2. `01_core/CURRENT_STATE.md` — all implemented endpoints and behaviour
-3. `01_core/NON_NEGOTIABLES.md` — hard rules
-4. `02_backend/BACKEND_OVERVIEW.md` — backend subsystem map
-5. `01_core/DECISIONS.md` — why things are built the way they are
+## Identity
+- VPS: `root@82.25.110.205` key `~/.ssh/new-vps-key`
+- DB: `uaeitjobs_db` on `qten-db` container
+- Frontend + full memory: `C:\Users\inbox\uaeitjobs\uaeitjobs-fe\.claude\memory\`
 
-## Backend-specific quick facts
+## Hard rules — always apply
 
-### Always compile before committing
+**Credentials**: Never ask user to paste passwords in chat. Never enter them via tools.
+
+**Before every commit**: `mvn clean compile -q` — no output = success.
+
+**Never `docker compose down`** — stops the DB. Redeploy sequence:
 ```bash
-mvn clean compile -q   # no output = success
+cd /opt/apps/uaeitjobs && docker compose pull uaeitjobs-backend && docker stop uaeitjobs-backend && docker rm uaeitjobs-backend && docker compose up -d --no-deps uaeitjobs-backend
 ```
 
-### Key packages
-```
-com.uaeitjobs.controller   — HTTP endpoints (AdminController, HRController, JobController, AuthController)
-com.uaeitjobs.service      — business logic
-com.uaeitjobs.service.ingest — ingest pipeline, sources
-com.uaeitjobs.service.ingest.pipeline — normalizers, dedup, scoring, tech extraction
-com.uaeitjobs.dto          — request/response DTOs
-com.uaeitjobs.entity       — JPA entities
-com.uaeitjobs.repository   — Spring Data repositories
-com.uaeitjobs.config       — security, JWT, rate limiting
-```
+**Git**: No force-push to main. End commits with:
+`Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
 
-### Critical behaviours
-- Login attempt logging uses `@Transactional(REQUIRES_NEW)` — must not change
-- Rate limit: 10 req/min, message: "Rate limit exceeded. Please try again shortly."
-- `JobDTOTest.EXPECTED_FIELD_COUNT = 31` — update when adding fields to JobResponse
-- `jobLocation` in JSON-LD handled as array AND object in `UrlJobScraperService`
+**Responses**: Terse. No trailing summaries.
+
+## Critical state (June 2026)
+- `@Transactional(REQUIRES_NEW)` on login attempt logging — do not change propagation
+- Rate limit: 10 req/min · error: "Rate limit exceeded. Please try again shortly."
+- `JobDTOTest.EXPECTED_FIELD_COUNT = 31` — increment when adding fields to `JobResponse`
+- `jobLocation` in JSON-LD: handled as array AND object in `UrlJobScraperService`
 - `inferUaeCity()` normalises hyphens: `text.toLowerCase().replace('-', ' ')`
+- `LinkedInJobData` has `location` field — `HRController.importPreview()` sets `.locationUae(ld.getLocation())`
+- ⚠ JSearch RapidAPI key needs rotation (was exposed in conversation history)
 
-### VPS / deploy
-- SSH: `ssh -i ~/.ssh/new-vps-key root@82.25.110.205`
-- Redeploy: `cd /opt/apps/uaeitjobs && docker compose pull uaeitjobs-backend && docker stop uaeitjobs-backend && docker rm uaeitjobs-backend && docker compose up -d --no-deps uaeitjobs-backend`
+## Package map
+```
+com.uaeitjobs.controller          — AdminController, HRController, JobController, AuthController
+com.uaeitjobs.service             — AdminService, JobService, HRService, EmailService
+com.uaeitjobs.service.ingest      — JobIngestService, JobIngestPipeline, JSearchSource, *Source
+com.uaeitjobs.service.ingest.pipeline — Normalizers, DedupResolver, RelevanceScorer, TechnologyExtractor
+com.uaeitjobs.dto                 — AdminDTO, JobDTO, AuthDTO, ExternalIngestRequest, UrlImportDTO
+com.uaeitjobs.entity              — Job, User, LoginAttempt, IngestRunLog, KeywordSearchStrategy
+com.uaeitjobs.config              — SecurityConfig, RateLimitingInterceptor, JwtTokenProvider
+```
 
-### ⚠ Action required
-JSearch RapidAPI key was exposed in conversation history — rotate at RapidAPI dashboard.
+## For complex tasks — read these
+1. `C:\Users\inbox\uaeitjobs\uaeitjobs-fe\.claude\memory\01_core\CURRENT_STATE.md`
+2. `C:\Users\inbox\uaeitjobs\uaeitjobs-fe\.claude\memory\02_backend\BACKEND_OVERVIEW.md`
+3. `C:\Users\inbox\uaeitjobs\uaeitjobs-fe\.claude\memory\01_core\DECISIONS.md`
