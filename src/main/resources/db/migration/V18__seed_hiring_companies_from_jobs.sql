@@ -21,12 +21,14 @@
 WITH company_stats AS (
     SELECT
         company_name,
-        -- newest apply_url that's non-null
-        (array_agg(apply_url ORDER BY created_at DESC NULLS LAST))
+        -- newest apply_url that's non-null. FILTER must attach directly to
+        -- the aggregate — wrapping array_agg() in extra parens turns this
+        -- into an invalid "(expression) FILTER ..." which Postgres rejects.
+        array_agg(apply_url ORDER BY created_at DESC NULLS LAST)
             FILTER (WHERE apply_url IS NOT NULL AND apply_url <> '')
             AS apply_urls,
         -- newest company_domain that's non-null
-        (array_agg(company_domain ORDER BY created_at DESC NULLS LAST))
+        array_agg(company_domain ORDER BY created_at DESC NULLS LAST)
             FILTER (WHERE company_domain IS NOT NULL AND company_domain <> '')
             AS domains,
         -- most-common emirate / category for this company
