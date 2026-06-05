@@ -1,0 +1,32 @@
+-- Cleanup: remove directory entries whose careers_url points to a
+-- job aggregator instead of the company's own careers page.
+--
+-- Background: V18 seeded careers_url from the newest apply_url per
+-- company in the jobs table, falling back to company_domain when
+-- apply_url was on a known aggregator. Two problems:
+--   1. The aggregator list was incomplete — Jooble, Talent.com,
+--      JobLeads, WhatJobs, Laimoon, CareerJet, Trovit, ZipRecruiter
+--      and others passed through, producing careers_url values like
+--      "https://ae.jooble.org/" for AI71 etc.
+--   2. The company_domain fallback is itself derived from apply_url
+--      by the scraper, so rejecting linkedin.com just produced
+--      linkedin.com from the fallback path.
+--
+-- Net effect: most V18-seeded rows have a careers_url that is a job
+-- board root, not the company's actual careers page. The platform's
+-- contract with users is "click and land on the company's own careers
+-- page" — these rows break that contract and have to go.
+--
+-- V19 hand-curated anchor rows are unaffected: every V19 careers_url
+-- is on the company's own domain (careers.microsoft.com, amazon.jobs,
+-- ibm.com/careers, careers.g42.ai, etc.) so the regex below doesn't
+-- match them.
+--
+-- This is destructive but idempotent — on a fresh DB the deleted
+-- rows were never seeded in the first place (V18 will still produce
+-- them, but they're removed again here). Future additions come
+-- through admin moderation or user submissions only, which validates
+-- the careers_url at human level.
+
+DELETE FROM hiring_companies
+WHERE careers_url ~* '(jooble|talent\.com|talent\.ae|jobsora|jobsite|whatjobs|hipo\.|jobleads|ziprecruiter|simplyhired|trovit|jobomas|laimoon|careerjet|snaphunt|joboptions|jobg8|jobserve|adview|monster\.|glassdoor|linkedin\.com|indeed\.com|naukri|bayt\.|gulftalent|adzuna|remoteok|himalayas|workable\.com|lever\.co|greenhouse\.io|joblum|allthetopbananas|hireahire)';
