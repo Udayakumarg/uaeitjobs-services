@@ -2,16 +2,20 @@ package com.uaeitjobs.controller;
 
 import com.uaeitjobs.dto.AdminDTO;
 import com.uaeitjobs.dto.ExternalIngestRequest;
+import com.uaeitjobs.dto.HiringCompanyDTO;
+import com.uaeitjobs.entity.HiringCompanyStatus;
 import com.uaeitjobs.entity.IngestRunLog;
 import com.uaeitjobs.entity.UserType;
 import com.uaeitjobs.repository.IngestRunLogRepository;
 import com.uaeitjobs.service.AdminService;
 import com.uaeitjobs.service.CurrentUserService;
 import com.uaeitjobs.service.DemoJobSeedService;
+import com.uaeitjobs.service.HiringCompanyService;
 import com.uaeitjobs.service.PlaywrightTriggerService;
 import com.uaeitjobs.service.ingest.IngestedJob;
 import com.uaeitjobs.service.ingest.JobIngestService;
 import com.uaeitjobs.util.PageUtil;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -42,6 +46,7 @@ public class AdminController {
     private final IngestRunLogRepository ingestRunLogRepository;
     private final JobService jobService;
     private final PlaywrightTriggerService playwrightTriggerService;
+    private final HiringCompanyService hiringCompanyService;
 
     @GetMapping("/stats")
     public AdminDTO.StatsResponse stats() {
@@ -280,5 +285,51 @@ public class AdminController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return jobService.adminList(q, active, PageUtil.page(page, size));
+    }
+
+    // ── Hiring-companies directory moderation ────────────────────────────
+    // Backs the /admin/companies page: review pending submissions, edit any
+    // field, approve / reject / delete, toggle featured / url_verified.
+
+    /** List directory entries by moderation status (PENDING / APPROVED / REJECTED). */
+    @GetMapping("/companies")
+    public Page<HiringCompanyDTO.AdminResponse> adminListCompanies(
+            @RequestParam(required = false) HiringCompanyStatus status,
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return hiringCompanyService.adminList(status, PageUtil.page(page, size));
+    }
+
+    /**
+     * Approve a submission. The request body may override any field
+     * (category, city, description, etc.) atomically with the approval —
+     * common workflow is "edit + approve" in a single click.
+     */
+    @PostMapping("/companies/{id}/approve")
+    public HiringCompanyDTO.AdminResponse approveCompany(
+            @PathVariable Long id,
+            @RequestBody(required = false) HiringCompanyDTO.AdminPatchRequest overrides) {
+        return hiringCompanyService.approve(id, currentUserService.get(), overrides);
+    }
+
+    @PostMapping("/companies/{id}/reject")
+    public HiringCompanyDTO.AdminResponse rejectCompany(
+            @PathVariable Long id,
+            @RequestBody(required = false) HiringCompanyDTO.RejectRequest body) {
+        return hiringCompanyService.reject(id, body == null ? null : body.reason());
+    }
+
+    /** Edit any field — used by the inline edit row in the moderation queue. */
+    @PatchMapping("/companies/{id}")
+    public HiringCompanyDTO.AdminResponse patchCompany(
+            @PathVariable Long id,
+            @Valid @RequestBody HiringCompanyDTO.AdminPatchRequest body) {
+        return hiringCompanyService.patch(id, body);
+    }
+
+    @DeleteMapping("/companies/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteCompany(@PathVariable Long id) {
+        hiringCompanyService.delete(id);
     }
 }

@@ -2,8 +2,10 @@ package com.uaeitjobs.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.uaeitjobs.entity.HiringCompany;
 import com.uaeitjobs.entity.Job;
 import com.uaeitjobs.repository.JobRepository;
+import com.uaeitjobs.service.HiringCompanyService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,6 +39,7 @@ public class SeoController {
     private static final DateTimeFormatter ISO_DATE = DateTimeFormatter.ISO_LOCAL_DATE;
 
     private final JobRepository jobRepository;
+    private final HiringCompanyService hiringCompanyService;
     private final ObjectMapper objectMapper;
 
     @Value("${app.public-url:https://www.uaeitjobs.com}")
@@ -51,6 +54,7 @@ public class SeoController {
         // Static high-value pages
         appendUrl(xml, "/", null, "daily", "1.0");
         appendUrl(xml, "/jobs", null, "hourly", "0.9");
+        appendUrl(xml, "/companies", null, "daily", "0.8");
         appendUrl(xml, "/register", null, "monthly", "0.3");
         appendUrl(xml, "/login", null, "monthly", "0.2");
 
@@ -62,6 +66,14 @@ public class SeoController {
         for (Job job : jobs) {
             String lastmod = job.getUpdatedAt() != null ? job.getUpdatedAt().toLocalDate().format(ISO_DATE) : null;
             appendUrl(xml, "/jobs/" + job.getId(), lastmod, "weekly", "0.8");
+        }
+
+        // Hiring-companies directory pages — one URL per approved company.
+        // Company pages change rarely, so weekly changefreq + 0.6 priority.
+        List<HiringCompany> companies = hiringCompanyService.approvedForSitemap();
+        for (HiringCompany c : companies) {
+            String lastmod = c.getUpdatedAt() != null ? c.getUpdatedAt().toLocalDate().format(ISO_DATE) : null;
+            appendUrl(xml, "/companies/" + c.getSlug(), lastmod, "weekly", "0.6");
         }
 
         xml.append("</urlset>\n");

@@ -70,7 +70,7 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**", "/actuator/health").permitAll()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/contact").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/v1/jobs/**", "/api/v1/skills/**", "/api/v1/locations", "/api/v1/stats", "/api/v1/seo/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/jobs/**", "/api/v1/skills/**", "/api/v1/locations", "/api/v1/stats", "/api/v1/seo/**", "/api/v1/companies", "/api/v1/companies/**").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/hr/**", "/api/v1/subscriptions/**", "/api/v1/linkedin-import").hasRole("HR")
                         .requestMatchers(HttpMethod.POST, "/api/v1/jobs").hasRole("HR")
