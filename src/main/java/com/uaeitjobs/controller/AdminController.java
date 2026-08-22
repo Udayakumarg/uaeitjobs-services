@@ -102,7 +102,14 @@ public class AdminController {
     public Map<String, Object> createUser(@RequestBody Map<String, String> body) {
         String email    = body.get("email");
         String password = body.get("password");
-        String typeStr  = body.getOrDefault("userType", "admin");
+        // No default here on purpose — a missing userType previously fell
+        // back to "admin", the single most-privileged role, so an incomplete
+        // request body silently minted a full admin account instead of
+        // failing loudly. Require the caller to say what they mean.
+        String typeStr  = body.get("userType");
+        if (typeStr == null || typeStr.isBlank()) {
+            throw new com.uaeitjobs.exception.ValidationException("userType is required");
+        }
         UserType userType;
         try { userType = UserType.valueOf(typeStr); }
         catch (IllegalArgumentException e) { throw new com.uaeitjobs.exception.ValidationException("Invalid userType: " + typeStr); }

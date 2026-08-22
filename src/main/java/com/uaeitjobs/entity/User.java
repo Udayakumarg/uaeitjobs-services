@@ -1,5 +1,6 @@
 package com.uaeitjobs.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -22,6 +23,14 @@ public class User {
     @Column(name = "display_name")
     private String displayName;
 
+    /**
+     * @JsonIgnore is the whole point here — this entity was being serialized
+     * directly (no DTO) from GET /api/v1/admin/users, so every admin API
+     * response included every user's BCrypt hash in plaintext JSON. Ignoring
+     * it at the entity level protects every serialization path, not just
+     * that one endpoint, against the same mistake happening again elsewhere.
+     */
+    @JsonIgnore
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
 
