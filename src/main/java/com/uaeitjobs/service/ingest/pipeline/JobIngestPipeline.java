@@ -181,6 +181,12 @@ public class JobIngestPipeline {
                 existing.setApplyUrl(incoming.applyUrl());
             }
             if (incoming.publisher() != null) existing.setPublisher(incoming.publisher());
+            // Backfill LinkedIn's Easy Apply flag if this re-scrape happened to
+            // include detail data the original insert didn't (e.g. a card-only
+            // discovery run followed later by a detail-enabled one) — without
+            // this, only brand-new discoveries would ever get enriched, and an
+            // already-known job would carry a stale null forever.
+            if (incoming.linkedinEasyApply() != null) existing.setLinkedinEasyApply(incoming.linkedinEasyApply());
             jobRepository.save(existing);
             return new Outcome.Updated(existing, match.level());
         }
