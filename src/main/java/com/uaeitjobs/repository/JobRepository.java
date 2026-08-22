@@ -258,6 +258,7 @@ public interface JobRepository extends JpaRepository<Job, Long> {
             or (:applyMode = 'external' and (j.apply_url is not null or j.linkedin_url is not null))
           )
           and (cast(:linkedinEasyApply as boolean) is null or j.linkedin_easy_apply = :linkedinEasyApply)
+          and (:visaType = '' or j.visa_type = :visaType)
         order by
           case when :q != ''
                then ts_rank(to_tsvector('english',
@@ -306,6 +307,7 @@ public interface JobRepository extends JpaRepository<Job, Long> {
             or (:applyMode = 'external' and (j.apply_url is not null or j.linkedin_url is not null))
           )
           and (cast(:linkedinEasyApply as boolean) is null or j.linkedin_easy_apply = :linkedinEasyApply)
+          and (:visaType = '' or j.visa_type = :visaType)
         """,
         nativeQuery = true)
     Page<Job> filterMulti(@Param("emirate")        String emirate,
@@ -323,5 +325,6 @@ public interface JobRepository extends JpaRepository<Job, Long> {
                           @Param("company")        String company,
                           @Param("applyMode")      String applyMode,
                           @Param("linkedinEasyApply") Boolean linkedinEasyApply,
+                          @Param("visaType")       String visaType,
                           Pageable pageable);
 }

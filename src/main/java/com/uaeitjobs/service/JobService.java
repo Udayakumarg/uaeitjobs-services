@@ -119,6 +119,7 @@ public class JobService {
                                                 String company,
                                                 String applyMode,
                                                 Boolean linkedinEasyApply,
+                                                String visaType,
                                                 Pageable pageable) {
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         boolean  authed   = SecurityUtils.isAuthenticated();
@@ -138,6 +139,7 @@ public class JobService {
                 blankToEmpty(company),
                 normalizeApplyMode(applyMode),
                 Boolean.TRUE.equals(linkedinEasyApply) ? Boolean.TRUE : null,
+                normalizeVisaType(visaType),
                 unsorted
         ).map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
     }
@@ -160,6 +162,15 @@ public class JobService {
     private static String normalizeApplyMode(String value) {
         String v = blankToEmpty(value).toLowerCase(java.util.Locale.ROOT);
         return v.equals("easy") || v.equals("external") ? v : "";
+    }
+
+    private static final java.util.Set<String> VALID_VISA_TYPES = java.util.Set.of(
+            "free_visa", "employment_visa", "own_visa", "visit_visa_accepted");
+
+    /** Same "unrecognised = no filter" defensiveness as normalizeApplyMode(). */
+    private static String normalizeVisaType(String value) {
+        String v = blankToEmpty(value).toLowerCase(java.util.Locale.ROOT);
+        return VALID_VISA_TYPES.contains(v) ? v : "";
     }
 
     public Page<JobDTO.JobResponse> search(String query, Pageable pageable) {
