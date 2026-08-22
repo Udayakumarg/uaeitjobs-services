@@ -241,6 +241,7 @@ public class JobIngestPipeline {
         job.setExpiresAt(now.plusDays(30));
         // Override remote_uae only if the workMode classifier disagrees.
         job.setRemoteUae("remote".equals(job.getWorkMode()) || incoming.remoteUae());
+        job.setLinkedinEasyApply(incoming.linkedinEasyApply());
         job.setImmediateJoiner(false);
         // Company logo — pass the company name so the resolver can fall back
         // to a domain guess when applyUrl points at an aggregator/ATS that

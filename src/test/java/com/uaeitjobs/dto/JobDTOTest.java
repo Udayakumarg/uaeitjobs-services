@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class JobDTOTest {
 
-    private static final int EXPECTED_FIELD_COUNT = 31;
+    private static final int EXPECTED_FIELD_COUNT = 32;
 
     @Test
     void jobResponseFieldCount() {

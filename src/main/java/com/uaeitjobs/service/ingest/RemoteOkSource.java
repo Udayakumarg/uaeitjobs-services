@@ -126,7 +126,8 @@ public class RemoteOkSource implements JobIngestSource {
                 inferExperience(title),
                 url,
                 true, // remote_uae = true, that's the whole point of this source
-                null  // RemoteOK API does not expose original posting date
+                null,  // RemoteOK API does not expose original posting date
+                null   // RemoteOK is not LinkedIn — no Easy Apply signal
         );
     }
 

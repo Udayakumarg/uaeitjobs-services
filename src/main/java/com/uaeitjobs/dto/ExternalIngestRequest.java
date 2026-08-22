@@ -37,5 +37,7 @@ public class ExternalIngestRequest {
         private Boolean remoteUae;
         /** Publisher name, e.g. "Bayt", "NaukriGulf" */
         private String publisher;
+        /** LinkedIn's own Easy Apply flag — true/false from LinkedIn, omit for every other source. */
+        private Boolean linkedinEasyApply;
     }
 }

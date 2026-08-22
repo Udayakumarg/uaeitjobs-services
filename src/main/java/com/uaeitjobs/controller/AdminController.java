@@ -177,7 +177,8 @@ public class AdminController {
                         inferExperienceLevel(j.getTitle()),
                         j.getApplyUrl(),
                         Boolean.TRUE.equals(j.getRemoteUae()),
-                        parseDate(j.getPostedAt())
+                        parseDate(j.getPostedAt()),
+                        j.getLinkedinEasyApply()
                 ))
                 .collect(Collectors.toList());
 

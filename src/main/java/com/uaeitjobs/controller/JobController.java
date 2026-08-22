@@ -76,11 +76,13 @@ public class JobController {
             @RequestParam(required = false) String company,
             /** "easy" (apply within the platform) or "external" (redirects to the source site). */
             @RequestParam(required = false) String applyMode,
+            /** LinkedIn-specific: true = only jobs LinkedIn itself marks Easy Apply. */
+            @RequestParam(required = false) Boolean linkedinEasyApply,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "80") int size) {
         return jobService.filterMulti(emirate, category, experienceLevel, jobType,
                 remoteUae, immediateJoiner, postedAfter, salaryMin, salaryMax, sort, q,
-                publisher, company, applyMode, PageUtil.page(page, size));
+                publisher, company, applyMode, linkedinEasyApply, PageUtil.page(page, size));
     }
 
     @PostMapping("/jobs")

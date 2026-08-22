@@ -133,7 +133,8 @@ public class HimalayasSource implements JobIngestSource {
                 inferExperience(title),
                 applyUrl,
                 true,
-                null  // Himalayas API does not expose original posting date
+                null,  // Himalayas API does not expose original posting date
+                null   // Himalayas is not LinkedIn — no Easy Apply signal
         );
     }
 

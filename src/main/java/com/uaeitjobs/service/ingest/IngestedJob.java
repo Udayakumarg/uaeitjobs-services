@@ -24,6 +24,8 @@ public record IngestedJob(
         String experienceLevel,
         String applyUrl,
         boolean remoteUae,
-        OffsetDateTime postedAt  // original posting date from the source API; null when unavailable
+        OffsetDateTime postedAt,  // original posting date from the source API; null when unavailable
+        /** LinkedIn's own Easy Apply flag — true/false from LinkedIn, null for every other source. */
+        Boolean linkedinEasyApply
 ) {
 }

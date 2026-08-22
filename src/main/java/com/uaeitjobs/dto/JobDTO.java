@@ -64,7 +64,8 @@ public final class JobDTO {
             String applyUrl,
             String descriptionSections,
             String descriptionHtml,
-            String companyLogoUrl
+            String companyLogoUrl,
+            Boolean linkedinEasyApply
     ) {
         /**
          * Returns a copy of this response with {@code applyUrl} and
@@ -77,7 +78,8 @@ public final class JobDTO {
                     salaryMin, salaryMax, salaryCurrency, jobType, experienceLevel, locationUae,
                     skills, null /* linkedinUrl */, source, postedAt, createdAt, updatedAt, expiresAt,
                     featured, active, viewCount, visaType, emirate, immediateJoiner, remoteUae,
-                    jobCategory, null /* applyUrl */, descriptionSections, descriptionHtml, companyLogoUrl);
+                    jobCategory, null /* applyUrl */, descriptionSections, descriptionHtml, companyLogoUrl,
+                    linkedinEasyApply);
         }
     }
 }

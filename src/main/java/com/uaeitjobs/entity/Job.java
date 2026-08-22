@@ -50,6 +50,15 @@ public class Job {
     private boolean immediateJoiner;
     @Column(name = "remote_uae", nullable = false)
     private boolean remoteUae;
+    /**
+     * LinkedIn's own apply-flow classification: {@code true} when LinkedIn lets
+     * the candidate apply without leaving LinkedIn ("Easy Apply"), {@code false}
+     * when LinkedIn itself redirects to the employer's site. {@code null} for
+     * every non-LinkedIn job, and for LinkedIn jobs ingested without a detail
+     * fetch (card data alone doesn't carry this signal).
+     */
+    @Column(name = "linkedin_easy_apply")
+    private Boolean linkedinEasyApply;
     /** Coarse role category — backend, frontend, qa, devops, etc. See JobCategory util for accepted values. */
     @Column(name = "job_category")
     private String jobCategory;

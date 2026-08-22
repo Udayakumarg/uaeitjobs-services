@@ -118,6 +118,7 @@ public class JobService {
                                                 java.util.List<String> publishers,
                                                 String company,
                                                 String applyMode,
+                                                Boolean linkedinEasyApply,
                                                 Pageable pageable) {
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         boolean  authed   = SecurityUtils.isAuthenticated();
@@ -136,6 +137,7 @@ public class JobService {
                 joinOrEmpty(publishers),
                 blankToEmpty(company),
                 normalizeApplyMode(applyMode),
+                Boolean.TRUE.equals(linkedinEasyApply) ? Boolean.TRUE : null,
                 unsorted
         ).map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
     }

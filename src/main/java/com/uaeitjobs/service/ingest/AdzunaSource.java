@@ -217,7 +217,8 @@ public class AdzunaSource implements JobIngestSource {
                 inferExperience(title),
                 redirect,
                 false,
-                postedAt
+                postedAt,
+                null  // Adzuna is not LinkedIn — no Easy Apply signal
         );
     }
 

@@ -183,7 +183,8 @@ public class CareerJetSource implements JobIngestSource {
                 inferExperience(title),
                 url,
                 false,
-                postedAt
+                postedAt,
+                null  // CareerJet is not LinkedIn — no Easy Apply signal
         );
     }
 

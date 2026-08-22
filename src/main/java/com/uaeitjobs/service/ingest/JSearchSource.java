@@ -281,7 +281,8 @@ public class JSearchSource {
                 inferExperience(title),
                 url,
                 remote,
-                postedAt
+                postedAt,
+                null  // JSearch aggregates many boards — not a LinkedIn-specific signal
         );
     }
 
