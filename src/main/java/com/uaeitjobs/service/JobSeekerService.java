@@ -1,8 +1,11 @@
 package com.uaeitjobs.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uaeitjobs.dto.ApplicationDTO;
 import com.uaeitjobs.dto.JobSeekerProfileDTO;
 import com.uaeitjobs.dto.SavedJobDTO;
+import com.uaeitjobs.dto.SeekerAiDTO;
 import com.uaeitjobs.entity.*;
 import com.uaeitjobs.exception.ResourceNotFoundException;
 import com.uaeitjobs.exception.ValidationException;
@@ -10,6 +13,7 @@ import com.uaeitjobs.mapper.ApplicationMapper;
 import com.uaeitjobs.mapper.JobMapper;
 import com.uaeitjobs.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -18,14 +22,29 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.net.URI;
+import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class JobSeekerService {
+    private static final Set<String> VALID_AI_PROVIDERS = Set.of("openai", "claude", "gemini");
+    private static final HttpClient AI_HTTP_CLIENT = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .version(HttpClient.Version.HTTP_1_1)
+            .build();
+
     private final JobSeekerProfileRepository profileRepository;
     private final JobRepository jobRepository;
     private final ApplicationRepository applicationRepository;
@@ -34,6 +53,8 @@ public class JobSeekerService {
     private final JobMapper jobMapper;
     private final FileStorageService fileStorageService;
     private final EmailService emailService;
+    private final EncryptionService encryptionService;
+    private final ObjectMapper objectMapper;
 
     @Transactional
     public JobSeekerProfileDTO.Response upsertProfile(User user, JobSeekerProfileDTO.Request request) {
@@ -146,6 +167,214 @@ public class JobSeekerService {
     public void unsaveJob(User user, Long jobId) {
         Job job = jobRepository.findById(jobId).orElseThrow(() -> new ResourceNotFoundException("Job not found"));
         savedJobRepository.deleteByUserAndJob(user, job);
+    }
+
+    // ── AI-drafted cover letters ────────────────────────────────────────────
+    // The seeker supplies their own provider API key — they pay for their
+    // own AI usage, we never absorb the cost or see the key in plaintext
+    // after save. Drafting is the whole feature: the seeker reviews and
+    // edits before submitting, we never auto-submit on their behalf. See
+    // uaeitjobs-web-app session notes for why full autonomous submission on
+    // external sites (LinkedIn, Bayt, ...) is out of scope — it would need
+    // the seeker's own logged-in session there, not just an API key, and
+    // risks their account being flagged for automation.
+
+    @Transactional
+    public SeekerAiDTO.SettingsResponse saveAiSettings(User user, SeekerAiDTO.SettingsRequest request) {
+        String provider = request.provider().toLowerCase().trim();
+        if (!VALID_AI_PROVIDERS.contains(provider)) {
+            throw new ValidationException("Unknown AI provider — use openai, claude, or gemini");
+        }
+        if (request.apiKey().isBlank()) {
+            throw new ValidationException("API key cannot be blank");
+        }
+        JobSeekerProfile profile = profileRepository.findByUser(user).orElseGet(() -> {
+            JobSeekerProfile created = new JobSeekerProfile();
+            created.setUser(user);
+            return created;
+        });
+        profile.setAiProvider(provider);
+        profile.setAiApiKeyEncrypted(encryptionService.encrypt(request.apiKey().trim()));
+        profileRepository.save(profile);
+        return aiSettingsResponse(profile);
+    }
+
+    @Transactional(readOnly = true)
+    public SeekerAiDTO.SettingsResponse getAiSettings(User user) {
+        return profileRepository.findByUser(user).map(this::aiSettingsResponse)
+                .orElse(new SeekerAiDTO.SettingsResponse(null, false, null));
+    }
+
+    @Transactional
+    public void deleteAiSettings(User user) {
+        profileRepository.findByUser(user).ifPresent(profile -> {
+            profile.setAiProvider(null);
+            profile.setAiApiKeyEncrypted(null);
+            profileRepository.save(profile);
+        });
+    }
+
+    @Transactional(readOnly = true)
+    public SeekerAiDTO.DraftResponse draftCoverLetter(User user, Long jobId) {
+        JobSeekerProfile profile = profileRepository.findByUser(user)
+                .orElseThrow(() -> new ValidationException("Complete your profile before drafting a cover letter"));
+        if (profile.getAiApiKeyEncrypted() == null || profile.getAiProvider() == null) {
+            throw new ValidationException("Add your AI provider and API key in your profile first");
+        }
+        Job job = jobRepository.findByIdAndActiveTrue(jobId)
+                .orElseThrow(() -> new ResourceNotFoundException("Job not found"));
+
+        String apiKey = encryptionService.decrypt(profile.getAiApiKeyEncrypted());
+        String systemPrompt =
+                "You write concise, specific cover letters for job applications. " +
+                "3-4 short paragraphs, no placeholders like [Company Name], no generic filler. " +
+                "Reference at least one concrete detail from the candidate's background and one " +
+                "from the job description. Plain text only, no markdown formatting.";
+        String userPrompt = buildCoverLetterPrompt(profile, job);
+
+        String text;
+        try {
+            text = switch (profile.getAiProvider()) {
+                case "openai" -> callOpenAi(apiKey, systemPrompt, userPrompt);
+                case "claude" -> callClaude(apiKey, systemPrompt, userPrompt);
+                case "gemini" -> callGemini(apiKey, systemPrompt, userPrompt);
+                default -> throw new ValidationException("Unknown AI provider");
+            };
+        } catch (ValidationException ve) {
+            throw ve;
+        } catch (Exception e) {
+            log.warn("AI cover letter draft failed for user {} provider {}: {}", user.getId(), profile.getAiProvider(), e.getMessage());
+            throw new ValidationException("Couldn't reach " + profile.getAiProvider() + " — check your API key and try again. (" + e.getMessage() + ")");
+        }
+        return new SeekerAiDTO.DraftResponse(text.trim());
+    }
+
+    private SeekerAiDTO.SettingsResponse aiSettingsResponse(JobSeekerProfile profile) {
+        boolean configured = profile.getAiApiKeyEncrypted() != null;
+        String masked = null;
+        if (configured) {
+            try {
+                String raw = encryptionService.decrypt(profile.getAiApiKeyEncrypted());
+                masked = raw.length() > 4
+                        ? "•".repeat(Math.min(raw.length() - 4, 20)) + raw.substring(raw.length() - 4)
+                        : "••••";
+            } catch (RuntimeException e) {
+                masked = "••••"; // decryption key rotated — key is unusable but don't leak that as an error here
+            }
+        }
+        return new SeekerAiDTO.SettingsResponse(profile.getAiProvider(), configured, masked);
+    }
+
+    private String buildCoverLetterPrompt(JobSeekerProfile profile, Job job) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Job: ").append(job.getTitle()).append(" at ").append(job.getCompanyName()).append('\n');
+        if (job.getLocationUae() != null) sb.append("Location: ").append(job.getLocationUae()).append('\n');
+        sb.append("Job description:\n").append(truncate(job.getDescription(), 3000)).append("\n\n");
+
+        sb.append("Candidate background:\n");
+        if (profile.getHeadline() != null && !profile.getHeadline().isBlank()) sb.append("Headline: ").append(profile.getHeadline()).append('\n');
+        if (profile.getYearsExperience() != null) sb.append("Years of experience: ").append(profile.getYearsExperience()).append('\n');
+        if (profile.getSummary() != null && !profile.getSummary().isBlank()) sb.append("Summary: ").append(profile.getSummary()).append('\n');
+        if (profile.getSkills() != null && !"[]".equals(profile.getSkills())) sb.append("Skills: ").append(profile.getSkills()).append('\n');
+        if (profile.getExperience() != null && !profile.getExperience().isBlank()) sb.append("Experience:\n").append(truncate(profile.getExperience(), 2000)).append('\n');
+        if (profile.getEducation() != null && !profile.getEducation().isBlank()) sb.append("Education:\n").append(truncate(profile.getEducation(), 1000)).append('\n');
+
+        sb.append("\nWrite the cover letter now.");
+        return sb.toString();
+    }
+
+    private static String truncate(String s, int max) {
+        if (s == null) return "";
+        return s.length() <= max ? s : s.substring(0, max) + "…";
+    }
+
+    // Deliberately minimal adapters — full retry/backoff/streaming isn't
+    // warranted for a synchronous, user-initiated, one-shot draft request.
+    // Mirrors the request/response shapes in service.ingest.pipeline.description.llm,
+    // but those clients are bound to one app-wide config-injected key and
+    // aren't reusable here where each call carries a different user's key.
+
+    private String callOpenAi(String apiKey, String systemPrompt, String userPrompt) throws Exception {
+        Map<String, Object> body = Map.of(
+                "model", "gpt-4o-mini",
+                "messages", List.of(
+                        Map.of("role", "system", "content", systemPrompt),
+                        Map.of("role", "user", "content", userPrompt)
+                ),
+                "temperature", 0.6,
+                "max_tokens", 700
+        );
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.openai.com/v1/chat/completions"))
+                .timeout(Duration.ofSeconds(30))
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(objectMapper.writeValueAsBytes(body)))
+                .build();
+        JsonNode root = sendAndParse(request, "OpenAI");
+        String text = root.path("choices").path(0).path("message").path("content").asText("");
+        if (text.isBlank()) throw new ValidationException("OpenAI returned an empty response");
+        return text;
+    }
+
+    private String callClaude(String apiKey, String systemPrompt, String userPrompt) throws Exception {
+        Map<String, Object> body = Map.of(
+                "model", "claude-3-5-haiku-20241022",
+                "max_tokens", 700,
+                "temperature", 0.6,
+                "system", systemPrompt,
+                "messages", List.of(Map.of("role", "user", "content", userPrompt))
+        );
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.anthropic.com/v1/messages"))
+                .timeout(Duration.ofSeconds(30))
+                .header("x-api-key", apiKey)
+                .header("anthropic-version", "2023-06-01")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(objectMapper.writeValueAsBytes(body)))
+                .build();
+        JsonNode root = sendAndParse(request, "Claude");
+        String text = root.path("content").path(0).path("text").asText("");
+        if (text.isBlank()) throw new ValidationException("Claude returned an empty response");
+        return text;
+    }
+
+    private String callGemini(String apiKey, String systemPrompt, String userPrompt) throws Exception {
+        String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key="
+                + URLEncoder.encode(apiKey, StandardCharsets.UTF_8);
+        Map<String, Object> body = Map.of(
+                "system_instruction", Map.of("parts", List.of(Map.of("text", systemPrompt))),
+                "contents", List.of(Map.of("role", "user", "parts", List.of(Map.of("text", userPrompt)))),
+                "generationConfig", Map.of("temperature", 0.6, "maxOutputTokens", 700, "candidateCount", 1)
+        );
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .timeout(Duration.ofSeconds(30))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofByteArray(objectMapper.writeValueAsBytes(body)))
+                .build();
+        JsonNode root = sendAndParse(request, "Gemini");
+        String text = root.path("candidates").path(0).path("content").path("parts").path(0).path("text").asText("");
+        if (text.isBlank()) throw new ValidationException("Gemini returned an empty response");
+        return text;
+    }
+
+    private JsonNode sendAndParse(HttpRequest request, String providerLabel) throws Exception {
+        HttpResponse<byte[]> response = AI_HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        String responseBody = new String(response.body(), StandardCharsets.UTF_8);
+        if (response.statusCode() == 401 || response.statusCode() == 403) {
+            throw new ValidationException(providerLabel + " rejected the API key (HTTP " + response.statusCode() + ")");
+        }
+        if (response.statusCode() == 429) {
+            throw new ValidationException(providerLabel + " rate limit reached — try again shortly");
+        }
+        if (response.statusCode() >= 400) {
+            throw new ValidationException(providerLabel + " HTTP " + response.statusCode() + ": " + truncate(responseBody, 200));
+        }
+        if (responseBody.isBlank()) {
+            throw new ValidationException(providerLabel + " returned an empty response");
+        }
+        return objectMapper.readTree(responseBody);
     }
 
     private JobSeekerProfileDTO.Response toResponse(JobSeekerProfile profile) {

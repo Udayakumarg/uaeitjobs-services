@@ -3,6 +3,7 @@ package com.uaeitjobs.controller;
 import com.uaeitjobs.dto.ApplicationDTO;
 import com.uaeitjobs.dto.JobSeekerProfileDTO;
 import com.uaeitjobs.dto.SavedJobDTO;
+import com.uaeitjobs.dto.SeekerAiDTO;
 import com.uaeitjobs.entity.User;
 import com.uaeitjobs.service.CurrentUserService;
 import com.uaeitjobs.service.JobSeekerService;
@@ -97,5 +98,29 @@ public class JobSeekerController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void unsaveJob(@PathVariable Long jobId) {
         jobSeekerService.unsaveJob(currentUserService.get(), jobId);
+    }
+
+    // ── AI-drafted cover letters — seeker supplies their own provider key ──
+
+    @PostMapping("/job-seeker/ai-settings")
+    public SeekerAiDTO.SettingsResponse saveAiSettings(@Valid @RequestBody SeekerAiDTO.SettingsRequest request) {
+        return jobSeekerService.saveAiSettings(currentUserService.get(), request);
+    }
+
+    @GetMapping("/job-seeker/ai-settings")
+    public SeekerAiDTO.SettingsResponse aiSettings() {
+        return jobSeekerService.getAiSettings(currentUserService.get());
+    }
+
+    @DeleteMapping("/job-seeker/ai-settings")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteAiSettings() {
+        jobSeekerService.deleteAiSettings(currentUserService.get());
+    }
+
+    /** Drafts a cover letter using the seeker's own AI key — never auto-submitted. */
+    @PostMapping("/job-seeker/applications/draft")
+    public SeekerAiDTO.DraftResponse draftApplication(@Valid @RequestBody SeekerAiDTO.DraftRequest request) {
+        return jobSeekerService.draftCoverLetter(currentUserService.get(), request.jobId());
     }
 }

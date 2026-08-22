@@ -120,6 +120,12 @@ app:
     secret: ${JWT_SECRET:change-this-dev-secret-change-this-dev-secret-change-this-dev-secret}
     access-token-minutes: ${JWT_ACCESS_MINUTES:15}
     refresh-token-days: ${JWT_REFRESH_DAYS:7}
+  # AES key for seeker-supplied AI provider API keys (EncryptionService).
+  # Any string works — it's hashed to a valid 256-bit key — but set a real
+  # secret in production; the dev default is intentionally recognisable so
+  # EncryptionService can warn instead of failing silently.
+  encryption:
+    key: ${APP_ENCRYPTION_KEY:change-this-dev-encryption-secret-change-this-dev-encryption-secret}
   email:
     verification-base-url: ${EMAIL_VERIFICATION_URL:http://localhost:3000/verify-email}
 

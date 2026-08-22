@@ -39,4 +39,12 @@ public class JobSeekerProfile {
     /** Free-form education text entered by the user (plain text, not JSON). */
     @Column(columnDefinition = "text", nullable = false)
     private String education = "";
+
+    /** "openai" | "claude" | "gemini". Null until the seeker configures AI drafting. */
+    @Column(name = "ai_provider")
+    private String aiProvider;
+
+    /** AES-256-GCM ciphertext (see EncryptionService) — never the raw key. */
+    @Column(name = "ai_api_key_encrypted", columnDefinition = "text")
+    private String aiApiKeyEncrypted;
 }
