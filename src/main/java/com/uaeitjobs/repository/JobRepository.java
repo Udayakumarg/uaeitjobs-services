@@ -16,12 +16,19 @@ public interface JobRepository extends JpaRepository<Job, Long> {
     Page<Job> findByActiveTrue(Pageable pageable);
     Page<Job> findByActive(boolean active, Pageable pageable);
 
-    @Query(value = "SELECT * FROM jobs WHERE is_active = :active AND (title ILIKE '%' || :q || '%' OR company_name ILIKE '%' || :q || '%')",
+    // ORDER BY is explicit here and the callers pass an unsorted Pageable —
+    // Spring Data appends a Pageable's Sort to a native query as literal SQL
+    // text rather than translating the Java property name to its column, so
+    // the default Sort.by("createdAt") from PageUtil became a literal
+    // "ORDER BY createdAt", which Postgres case-folds to the unquoted
+    // identifier createdat and rejects (only created_at exists). Same bug
+    // class already fixed once for the directory's native publicSearch query.
+    @Query(value = "SELECT * FROM jobs WHERE is_active = :active AND (title ILIKE '%' || :q || '%' OR company_name ILIKE '%' || :q || '%') ORDER BY created_at DESC",
            countQuery = "SELECT count(*) FROM jobs WHERE is_active = :active AND (title ILIKE '%' || :q || '%' OR company_name ILIKE '%' || :q || '%')",
            nativeQuery = true)
     Page<Job> adminSearch(@Param("q") String q, @Param("active") boolean active, Pageable pageable);
 
-    @Query(value = "SELECT * FROM jobs WHERE title ILIKE '%' || :q || '%' OR company_name ILIKE '%' || :q || '%'",
+    @Query(value = "SELECT * FROM jobs WHERE title ILIKE '%' || :q || '%' OR company_name ILIKE '%' || :q || '%' ORDER BY created_at DESC",
            countQuery = "SELECT count(*) FROM jobs WHERE title ILIKE '%' || :q || '%' OR company_name ILIKE '%' || :q || '%'",
            nativeQuery = true)
     Page<Job> adminSearchAll(@Param("q") String q, Pageable pageable);

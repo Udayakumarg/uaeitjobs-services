@@ -50,13 +50,17 @@ public class JobService {
 
     /** Admin-only: list all jobs (active + archived) with optional search and active filter. */
     public Page<JobDTO.JobResponse> adminList(String q, Boolean active, Pageable pageable) {
+        // adminSearch/adminSearchAll are native queries with their own explicit
+        // ORDER BY — an unsorted Pageable avoids Spring Data appending
+        // PageUtil's Sort.by("createdAt") as literal, untranslated SQL.
+        Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         Page<Job> page;
         if (active != null && q != null && !q.isBlank()) {
-            page = jobRepository.adminSearch(q.trim(), active, pageable);
+            page = jobRepository.adminSearch(q.trim(), active, unsorted);
         } else if (active != null) {
             page = jobRepository.findByActive(active, pageable);
         } else if (q != null && !q.isBlank()) {
-            page = jobRepository.adminSearchAll(q.trim(), pageable);
+            page = jobRepository.adminSearchAll(q.trim(), unsorted);
         } else {
             page = jobRepository.findAll(pageable);
         }
