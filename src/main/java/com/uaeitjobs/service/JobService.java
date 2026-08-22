@@ -117,6 +117,7 @@ public class JobService {
                                                 String q,
                                                 java.util.List<String> publishers,
                                                 String company,
+                                                String applyMode,
                                                 Pageable pageable) {
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         boolean  authed   = SecurityUtils.isAuthenticated();
@@ -134,6 +135,7 @@ public class JobService {
                 blankToEmpty(q),
                 joinOrEmpty(publishers),
                 blankToEmpty(company),
+                normalizeApplyMode(applyMode),
                 unsorted
         ).map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
     }
@@ -145,6 +147,17 @@ public class JobService {
 
     private static String blankToEmpty(String value) {
         return value == null || value.isBlank() ? "" : value.trim();
+    }
+
+    /**
+     * "easy" (no external apply_url/linkedin_url — applies within the platform)
+     * or "external" (redirects to the source site). Anything else is treated as
+     * no filter rather than interpolated into the query, since an unrecognised
+     * value would otherwise match neither branch and silently zero the results.
+     */
+    private static String normalizeApplyMode(String value) {
+        String v = blankToEmpty(value).toLowerCase(java.util.Locale.ROOT);
+        return v.equals("easy") || v.equals("external") ? v : "";
     }
 
     public Page<JobDTO.JobResponse> search(String query, Pageable pageable) {

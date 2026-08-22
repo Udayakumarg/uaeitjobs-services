@@ -74,11 +74,13 @@ public class JobController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) java.util.List<String> publisher,
             @RequestParam(required = false) String company,
+            /** "easy" (apply within the platform) or "external" (redirects to the source site). */
+            @RequestParam(required = false) String applyMode,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "80") int size) {
         return jobService.filterMulti(emirate, category, experienceLevel, jobType,
                 remoteUae, immediateJoiner, postedAfter, salaryMin, salaryMax, sort, q,
-                publisher, company, PageUtil.page(page, size));
+                publisher, company, applyMode, PageUtil.page(page, size));
     }
 
     @PostMapping("/jobs")

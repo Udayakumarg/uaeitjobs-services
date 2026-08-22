@@ -252,6 +252,11 @@ public interface JobRepository extends JpaRepository<Job, Long> {
                 ) from unnest(string_to_array(:publishers, ',')) t(p))
           )
           and (:company = '' or lower(j.company_name) ilike concat('%', lower(:company), '%'))
+          and (
+            :applyMode = ''
+            or (:applyMode = 'easy'     and j.apply_url is null and j.linkedin_url is null)
+            or (:applyMode = 'external' and (j.apply_url is not null or j.linkedin_url is not null))
+          )
         order by
           case when :q != ''
                then ts_rank(to_tsvector('english',
@@ -294,6 +299,11 @@ public interface JobRepository extends JpaRepository<Job, Long> {
                 ) from unnest(string_to_array(:publishers, ',')) t(p))
           )
           and (:company = '' or lower(j.company_name) ilike concat('%', lower(:company), '%'))
+          and (
+            :applyMode = ''
+            or (:applyMode = 'easy'     and j.apply_url is null and j.linkedin_url is null)
+            or (:applyMode = 'external' and (j.apply_url is not null or j.linkedin_url is not null))
+          )
         """,
         nativeQuery = true)
     Page<Job> filterMulti(@Param("emirate")        String emirate,
@@ -309,5 +319,6 @@ public interface JobRepository extends JpaRepository<Job, Long> {
                           @Param("q")              String q,
                           @Param("publishers")     String publishers,
                           @Param("company")        String company,
+                          @Param("applyMode")      String applyMode,
                           Pageable pageable);
 }
