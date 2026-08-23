@@ -103,8 +103,12 @@ public class HimalayasSource implements JobIngestSource {
         }
         if (applyUrl == null) return null;
 
-        String description = sanitize(node.path("excerpt").asText(""));
-        if (description.isBlank()) description = sanitize(node.path("description").asText(title));
+        // Verified live against Himalayas' actual API: "description" is the full
+        // HTML posting (thousands of chars); "excerpt" is a one-sentence teaser
+        // that's essentially never blank — so preferring excerpt-first (the
+        // previous order) meant the real description was never used at all.
+        String description = sanitize(node.path("description").asText(""));
+        if (description.isBlank()) description = sanitize(node.path("excerpt").asText(title));
 
         Integer salaryMin = node.has("minSalary") && !node.get("minSalary").isNull()
                 ? node.get("minSalary").asInt()
@@ -146,8 +150,16 @@ public class HimalayasSource implements JobIngestSource {
         return "mid_3_5_yrs";
     }
 
+    /**
+     * Preserve paragraph/list breaks as newlines before stripping tags, rather
+     * than collapsing everything onto one line — matches the plain-text shape
+     * the downstream description formatter (LLM or heuristic) expects.
+     */
     private static String sanitize(String html) {
         if (html == null) return "";
-        return html.replaceAll("<[^>]+>", " ").replaceAll("\\s+", " ").trim();
+        String withBreaks = html
+                .replaceAll("(?i)<br\\s*/?>", "\n")
+                .replaceAll("(?i)</(p|li|div|h[1-6])>", "\n");
+        return withBreaks.replaceAll("<[^>]+>", "").replaceAll("[ \\t]+", " ").replaceAll("\\n{3,}", "\n\n").trim();
     }
 }
