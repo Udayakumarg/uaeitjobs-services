@@ -3,10 +3,13 @@ package com.uaeitjobs.controller;
 import com.uaeitjobs.dto.AdminDTO;
 import com.uaeitjobs.dto.ExternalIngestRequest;
 import com.uaeitjobs.dto.HiringCompanyDTO;
+import com.uaeitjobs.dto.KeywordSuggestionDTO;
 import com.uaeitjobs.entity.HiringCompanyStatus;
 import com.uaeitjobs.entity.IngestRunLog;
+import com.uaeitjobs.entity.KeywordSearchStrategy;
 import com.uaeitjobs.entity.UserType;
 import com.uaeitjobs.repository.IngestRunLogRepository;
+import com.uaeitjobs.repository.KeywordSearchStrategyRepository;
 import com.uaeitjobs.service.AdminService;
 import com.uaeitjobs.service.CurrentUserService;
 import com.uaeitjobs.service.DemoJobSeedService;
@@ -14,6 +17,7 @@ import com.uaeitjobs.service.HiringCompanyService;
 import com.uaeitjobs.service.PlaywrightTriggerService;
 import com.uaeitjobs.service.ingest.IngestedJob;
 import com.uaeitjobs.service.ingest.JobIngestService;
+import com.uaeitjobs.service.ingest.KeywordSuggestionService;
 import com.uaeitjobs.util.PageUtil;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -47,6 +51,8 @@ public class AdminController {
     private final JobService jobService;
     private final PlaywrightTriggerService playwrightTriggerService;
     private final HiringCompanyService hiringCompanyService;
+    private final KeywordSearchStrategyRepository keywordSearchStrategyRepository;
+    private final KeywordSuggestionService keywordSuggestionService;
 
     @GetMapping("/stats")
     public AdminDTO.StatsResponse stats() {
@@ -228,6 +234,24 @@ public class AdminController {
                 "serverReachable", serverReachable,
                 "sources", sourceStatus
         );
+    }
+
+    /** Every JSearch keyword with its live rotation stats — the full picture, not just what appears in recent runs. */
+    @GetMapping("/keywords")
+    public List<KeywordSearchStrategy> keywords() {
+        return keywordSearchStrategyRepository.findAll(Sort.by(Sort.Direction.ASC, "tier", "keyword"));
+    }
+
+    /**
+     * Asks the configured LLM ({@code app.llm.*}, same provider used for
+     * description formatting) to propose new JSearch keywords not already
+     * covered, and inserts them at the lowest rotation tier. The LLM only
+     * proposes candidates — every keyword still has to earn its place via
+     * the same real insert-rate tracking every other keyword goes through.
+     */
+    @PostMapping("/keywords/suggest")
+    public KeywordSuggestionDTO.Response suggestKeywords() {
+        return keywordSuggestionService.suggestAndAddKeywords();
     }
 
     private static String inferExperienceLevel(String title) {
