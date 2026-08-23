@@ -6,7 +6,9 @@ import com.uaeitjobs.config.JwtTokenProvider;
 import com.uaeitjobs.dto.LinkedInJobData;
 import com.uaeitjobs.entity.User;
 import com.uaeitjobs.entity.UserType;
+import com.uaeitjobs.exception.ValidationException;
 import com.uaeitjobs.repository.JobRepository;
+import com.uaeitjobs.repository.LinkedInImportRepository;
 import com.uaeitjobs.repository.UserRepository;
 import com.uaeitjobs.service.LinkedInScraperService;
 import org.junit.jupiter.api.Test;
@@ -35,6 +37,9 @@ class HRControllerLinkedInImportIntegrationTest extends AbstractIntegrationTest 
 
     @Autowired
     private JobRepository jobRepository;
+
+    @Autowired
+    private LinkedInImportRepository linkedInImportRepository;
 
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
@@ -80,6 +85,36 @@ class HRControllerLinkedInImportIntegrationTest extends AbstractIntegrationTest 
                     assertThat(job.getSource()).isEqualTo("linkedin");
                     assertThat(job.getPostedBy().getId()).isEqualTo(hrId);
                     assertThat(job.isActive()).isTrue();
+                });
+    }
+
+    @Test
+    void failedImportStillPersistsAnAuditRow() throws Exception {
+        // Regression: the "failed" status write used to share a transaction
+        // with the risky scrape/create call — a failure rolled back its own
+        // audit trail, so the import table never recorded a single failure.
+        String linkedInUrl = "https://www.linkedin.com/jobs/view/4401461999/";
+        User hr = new User();
+        hr.setEmail("hr-linkedin-import-failure@uaeitjobs.com");
+        hr.setPasswordHash("unused");
+        hr.setUserType(UserType.hr);
+        hr.setVerified(true);
+        hr = userRepository.save(hr);
+
+        when(linkedInScraperService.scrapeLinkedInJob(linkedInUrl))
+                .thenThrow(new ValidationException("LinkedIn job not found — it may have been removed or the link is incorrect"));
+
+        mockMvc.perform(post("/api/v1/linkedin-import")
+                        .header("Authorization", "Bearer " + jwtTokenProvider.generateAccessToken(hr))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(new HRController.LinkedInImportRequest(linkedInUrl))))
+                .andExpect(status().isBadRequest());
+
+        assertThat(linkedInImportRepository.findAll())
+                .anySatisfy(record -> {
+                    assertThat(record.getLinkedinJobUrl()).isEqualTo(linkedInUrl);
+                    assertThat(record.getStatus()).isEqualTo("failed");
+                    assertThat(record.getErrorMessage()).isNotBlank();
                 });
     }
 }

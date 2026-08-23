@@ -40,6 +40,28 @@ class RateLimitingIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void spoofedFirstHopDoesNotBypassRateLimit() throws Exception {
+        // nginx appends the real client IP as the LAST entry of X-Forwarded-For;
+        // the first entry is whatever the client sent and must not be trusted.
+        // Rotating it per request must not let the bucket dodge the limit.
+        String body = objectMapper.writeValueAsString(new AuthDTO.LoginRequest("spoofed-xff@uaeitjobs.com", "wrong"));
+
+        for (int i = 0; i < 10; i++) {
+            mockMvc.perform(post("/api/v1/auth/login")
+                            .header("X-Forwarded-For", "203.0.113." + i + ", 10.0.3.50")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .header("X-Forwarded-For", "203.0.113.99, 10.0.3.50")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isTooManyRequests());
+    }
+
+    @Test
     void keepsSeparateBucketsForDifferentForwardedIps() throws Exception {
         String body = objectMapper.writeValueAsString(new AuthDTO.LoginRequest("missing-ip-isolation@uaeitjobs.com", "wrong"));
 

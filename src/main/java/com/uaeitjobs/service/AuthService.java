@@ -33,6 +33,7 @@ public class AuthService {
     private final UserMapper userMapper;
     private final EmailService emailService;
     private final LoginAttemptService loginAttemptService;
+    private final CurrentUserService currentUserService;
 
     @Value("${app.jwt.refresh-token-days}")
     private long refreshTokenDays;
@@ -94,11 +95,21 @@ public class AuthService {
     @Transactional
     public AuthDTO.AuthResponse refresh(String refreshTokenValue) {
         RefreshToken refreshToken = refreshTokenRepository.findByToken(refreshTokenValue)
-                .filter(token -> !token.isRevoked())
-                .filter(token -> token.getExpiresAt().isAfter(OffsetDateTime.now()))
                 .orElseThrow(() -> new UnauthorizedException("Invalid refresh token"));
+
+        if (refreshToken.isRevoked()) {
+            // Reuse of an already-rotated-away token is the signature of theft —
+            // an attacker and the legitimate user both hold a copy, and one of
+            // them redeemed it first. Revoke the whole family so the other
+            // copy (wherever it is) stops working too, not just this one.
+            refreshTokenRepository.revokeAllByUser(refreshToken.getUser());
+            throw new UnauthorizedException("Invalid refresh token");
+        }
+        if (refreshToken.getExpiresAt().isBefore(OffsetDateTime.now())) {
+            throw new UnauthorizedException("Invalid refresh token");
+        }
+
         // Token rotation: revoke the consumed token before issuing a new one.
-        // Reuse of a revoked token indicates potential token theft.
         refreshToken.setRevoked(true);
         refreshTokenRepository.save(refreshToken);
         return issueTokens(refreshToken.getUser());
@@ -145,7 +156,12 @@ public class AuthService {
                 .filter(t -> t.getExpiresAt().isAfter(OffsetDateTime.now()))
                 .orElseThrow(() -> new ValidationException("This reset link is invalid or has expired. Please request a new one."));
         token.setUsed(true);
-        token.getUser().setPasswordHash(passwordEncoder.encode(newPassword));
+        User user = token.getUser();
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        // A password reset means the user suspects compromise (or lost access) —
+        // revoke all existing sessions the same way changePassword does, so a
+        // stolen refresh token doesn't stay valid after the reset.
+        refreshTokenRepository.revokeAllByUser(user);
     }
 
     /**
@@ -191,6 +207,7 @@ public class AuthService {
             }
             // silently ignore invalid values that don't start with "data:image/"
         }
+        currentUserService.evict(user.getEmail());
         return userMapper.toResponse(user);
     }
 

@@ -29,6 +29,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
@@ -65,7 +66,8 @@ public class JobSeekerService {
             created.setUser(user);
             return created;
         });
-        profile.setCvUrl(request.cvUrl());
+        // cvUrl is deliberately NOT settable here — it's an opaque, server-
+        // generated filename written only by uploadCv(), never client input.
         profile.setHeadline(request.headline());
         profile.setSummary(request.summary());
         profile.setYearsExperience(request.yearsExperience());
@@ -82,14 +84,25 @@ public class JobSeekerService {
 
     @Transactional
     public JobSeekerProfileDTO.Response uploadCv(User user, MultipartFile file) {
-        String url = fileStorageService.storeCv(user.getId(), file);
+        String filename = fileStorageService.storeCv(user.getId(), file);
         JobSeekerProfile profile = profileRepository.findByUser(user).orElseGet(() -> {
             JobSeekerProfile created = new JobSeekerProfile();
             created.setUser(user);
             return created;
         });
-        profile.setCvUrl(url);
+        profile.setCvUrl(filename);
         return toResponse(profileRepository.save(profile));
+    }
+
+    /** Streams the current user's own CV. */
+    @Transactional(readOnly = true)
+    public Path resolveOwnCv(User user) {
+        JobSeekerProfile profile = profileRepository.findByUser(user)
+                .orElseThrow(() -> new ResourceNotFoundException("No CV on file"));
+        if (profile.getCvUrl() == null || profile.getCvUrl().isBlank()) {
+            throw new ResourceNotFoundException("No CV on file");
+        }
+        return fileStorageService.resolveCv(user.getId(), profile.getCvUrl());
     }
 
     @Transactional
@@ -149,7 +162,7 @@ public class JobSeekerService {
 
     @Transactional(readOnly = true)
     public List<SavedJobDTO.Response> savedJobs(User user) {
-        return savedJobRepository.findByUser(user).stream()
+        return savedJobRepository.findTop500ByUserOrderBySavedAtDesc(user).stream()
                 .map(s -> new SavedJobDTO.Response(s.getId(), jobMapper.toResponse(s.getJob()), s.getSavedAt()))
                 .toList();
     }
@@ -251,7 +264,16 @@ public class JobSeekerService {
         });
     }
 
-    @Transactional(readOnly = true)
+    // Deliberately NOT @Transactional: draftCoverLetter makes a synchronous,
+    // user-initiated outbound call to a third-party LLM (up to 30s, see
+    // AI_HTTP_CLIENT/sendAndParse below). Wrapping that in a transaction would
+    // hold a HikariCP connection for the full duration of someone else's API —
+    // a handful of concurrent drafts would exhaust the pool for everyone. The
+    // two repository reads below each run in their own short-lived transaction
+    // (Spring Data JPA's default per-method behavior) and every field touched
+    // afterwards (profile/job getters used in buildCoverLetterPrompt) is a
+    // simple column, not a lazy association, so nothing here needs the
+    // read to stay open past the initial fetch.
     public SeekerAiDTO.DraftResponse draftCoverLetter(User user, Long jobId) {
         JobSeekerProfile profile = profileRepository.findByUser(user)
                 .orElseThrow(() -> new ValidationException("Complete your profile before drafting a cover letter"));
@@ -281,7 +303,7 @@ public class JobSeekerService {
             throw ve;
         } catch (Exception e) {
             log.warn("AI cover letter draft failed for user {} provider {}: {}", user.getId(), profile.getAiProvider(), e.getMessage());
-            throw new ValidationException("Couldn't reach " + profile.getAiProvider() + " — check your API key and try again. (" + e.getMessage() + ")");
+            throw new ValidationException("Couldn't reach " + profile.getAiProvider() + " — check your API key and try again.");
         }
         return new SeekerAiDTO.DraftResponse(text.trim());
     }
@@ -406,7 +428,9 @@ public class JobSeekerService {
             throw new ValidationException(providerLabel + " rate limit reached — try again shortly");
         }
         if (response.statusCode() >= 400) {
-            throw new ValidationException(providerLabel + " HTTP " + response.statusCode() + ": " + truncate(responseBody, 200));
+            log.warn("{} request failed with HTTP {}: {}", providerLabel, response.statusCode(), truncate(responseBody, 500));
+            throw new ValidationException(providerLabel + " request failed (HTTP " + response.statusCode()
+                    + "). Check your API key and model access, then try again.");
         }
         if (responseBody.isBlank()) {
             throw new ValidationException(providerLabel + " returned an empty response");
@@ -415,7 +439,14 @@ public class JobSeekerService {
     }
 
     private JobSeekerProfileDTO.Response toResponse(JobSeekerProfile profile) {
-        return new JobSeekerProfileDTO.Response(profile.getId(), profile.getCvUrl(), profile.getHeadline(), profile.getSummary(), profile.getYearsExperience(), profile.getVisaStatus(), profile.getSkills(), profile.getExperience(), profile.getEducation());
+        // profile.getCvUrl() is an opaque server-generated filename now, never
+        // exposed directly — the client gets the fixed download endpoint
+        // instead, or null when there's nothing to download.
+        boolean hasCv = profile.getCvUrl() != null && !profile.getCvUrl().isBlank();
+        // Relative to the API base (no /api/v1 prefix) — matches every other
+        // path this service hands to the frontend's axios instance.
+        String cvDownloadUrl = hasCv ? "/job-seeker/cv" : null;
+        return new JobSeekerProfileDTO.Response(profile.getId(), cvDownloadUrl, profile.getHeadline(), profile.getSummary(), profile.getYearsExperience(), profile.getVisaStatus(), profile.getSkills(), profile.getExperience(), profile.getEducation());
     }
 
     /**

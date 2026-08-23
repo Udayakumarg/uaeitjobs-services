@@ -48,6 +48,24 @@ class SecurityAuthorizationIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void hrCannotUseApplicationTrackOrJobIdsEndpoints() throws Exception {
+        // These two fell through to anyRequest().authenticated() and were
+        // reachable by any logged-in role, not just job seekers.
+        User hr = user(UserType.hr, "hr-track-security@uaeitjobs.com");
+        String token = jwtTokenProvider.generateAccessToken(hr);
+
+        mockMvc.perform(post("/api/v1/applications/track")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"jobId\":1}"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/v1/applications/job-ids")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void jobSeekerCannotUpdateApplicationStatus() throws Exception {
         User seeker = user(UserType.job_seeker, "seeker-security@uaeitjobs.com");
         String token = jwtTokenProvider.generateAccessToken(seeker);

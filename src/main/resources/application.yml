@@ -117,15 +117,19 @@ app:
     secure: ${COOKIE_SECURE:true}
     same-site: ${COOKIE_SAME_SITE:Strict}
   jwt:
-    secret: ${JWT_SECRET:change-this-dev-secret-change-this-dev-secret-change-this-dev-secret}
+    # No insecure fallback on purpose — a missing JWT_SECRET must fail startup
+    # (see JwtTokenProvider.validateSecret) rather than silently boot on a
+    # public, forgeable default. Set JWT_SECRET in every environment, including
+    # local dev.
+    secret: ${JWT_SECRET:}
     access-token-minutes: ${JWT_ACCESS_MINUTES:15}
     refresh-token-days: ${JWT_REFRESH_DAYS:7}
   # AES key for seeker-supplied AI provider API keys (EncryptionService).
-  # Any string works — it's hashed to a valid 256-bit key — but set a real
-  # secret in production; the dev default is intentionally recognisable so
-  # EncryptionService can warn instead of failing silently.
+  # Any string works — it's hashed to a valid 256-bit key. No insecure
+  # fallback on purpose — a missing APP_ENCRYPTION_KEY must fail startup
+  # (see EncryptionService) rather than silently encrypt under a public key.
   encryption:
-    key: ${APP_ENCRYPTION_KEY:change-this-dev-encryption-secret-change-this-dev-encryption-secret}
+    key: ${APP_ENCRYPTION_KEY:}
   email:
     verification-base-url: ${EMAIL_VERIFICATION_URL:http://localhost:3000/verify-email}
 

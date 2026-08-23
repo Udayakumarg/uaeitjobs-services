@@ -195,9 +195,22 @@ public class RateLimitingInterceptor implements HandlerInterceptor {
         return uri.equals("/api/v1/auth/refresh");
     }
 
+    /**
+     * The client's IP for rate-limit bucketing.
+     *
+     * <p>nginx sets {@code X-Forwarded-For} via {@code $proxy_add_x_forwarded_for},
+     * which <em>appends</em> the real connecting IP rather than replacing whatever
+     * the client sent — so the first entry is attacker-controlled (rotate it per
+     * request and the bucket never fills) while the <em>last</em> entry is the one
+     * nginx itself added. This assumes exactly one reverse proxy (nginx) sits
+     * directly in front of this app with nothing else prepending to the header.
+     */
     private static String clientIp(HttpServletRequest request) {
         String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) return xff.split(",")[0].trim();
+        if (xff != null && !xff.isBlank()) {
+            String[] parts = xff.split(",");
+            return parts[parts.length - 1].trim();
+        }
         return request.getRemoteAddr();
     }
 }

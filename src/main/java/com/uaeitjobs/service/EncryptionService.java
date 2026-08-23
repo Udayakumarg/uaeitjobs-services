@@ -32,15 +32,16 @@ public class EncryptionService {
     private final SecretKeySpec key;
 
     public EncryptionService(@Value("${app.encryption.key}") String secret) {
+        if (secret == null || secret.isBlank()) {
+            throw new IllegalStateException(
+                    "app.encryption.key must be set — refusing to start with no encryption key. "
+                            + "Set APP_ENCRYPTION_KEY in every environment, including local dev.");
+        }
         try {
             byte[] derived = MessageDigest.getInstance("SHA-256").digest(secret.getBytes(StandardCharsets.UTF_8));
             this.key = new SecretKeySpec(derived, "AES");
         } catch (Exception e) {
             throw new IllegalStateException("Failed to derive encryption key", e);
-        }
-        if ("change-this-dev-encryption-secret-change-this-dev-encryption-secret".equals(secret)) {
-            log.warn("APP_ENCRYPTION_KEY is unset — using the insecure dev default. "
-                    + "Set a real secret before storing anything sensitive in production.");
         }
     }
 

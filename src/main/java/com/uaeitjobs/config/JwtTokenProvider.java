@@ -21,7 +21,8 @@ public class JwtTokenProvider {
     /** Well-known weak/placeholder secrets that must never reach production. */
     private static final Set<String> KNOWN_WEAK_SECRETS = Set.of(
             "secret", "changeme", "changeme!", "mysecret", "jwt-secret",
-            "your-secret-key", "your_jwt_secret_key"
+            "your-secret-key", "your_jwt_secret_key",
+            "change-this-dev-secret-change-this-dev-secret-change-this-dev-secret"
     );
     private static final int MIN_SECRET_BYTES = 64;
 

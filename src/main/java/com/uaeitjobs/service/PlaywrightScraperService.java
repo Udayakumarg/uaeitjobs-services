@@ -7,6 +7,8 @@ import com.microsoft.playwright.Page;
 import com.microsoft.playwright.Playwright;
 import com.microsoft.playwright.options.LoadState;
 import com.microsoft.playwright.options.WaitUntilState;
+import com.uaeitjobs.exception.ValidationException;
+import com.uaeitjobs.util.SsrfGuard;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -66,6 +68,27 @@ public class PlaywrightScraperService {
 
                 try (BrowserContext context = browser.newContext(ctxOpts)) {
                     try (Page page = context.newPage()) {
+
+                        // The initial navigation URL is already SSRF-validated by the
+                        // caller, but Chromium follows redirects on its own — a 302 on
+                        // the career page could point anywhere, including this host's
+                        // own internal network. Every top-level document request (the
+                        // original navigation AND each redirect hop it produces) is
+                        // intercepted and re-validated before being allowed through.
+                        page.route("**/*", route -> {
+                            String reqUrl = route.request().url();
+                            if (!"document".equals(route.request().resourceType())) {
+                                route.resume();
+                                return;
+                            }
+                            try {
+                                SsrfGuard.validate(reqUrl);
+                                route.resume();
+                            } catch (ValidationException ve) {
+                                log.warn("Playwright: SSRF probe blocked mid-navigation — {}", reqUrl);
+                                route.abort();
+                            }
+                        });
 
                         // Step 1: navigate and wait for the initial DOM to be ready
                         page.navigate(url, new Page.NavigateOptions()

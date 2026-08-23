@@ -15,6 +15,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +35,7 @@ public class HRService {
     private final LinkedInScraperService linkedInScraperService;
     private final ApplicationMapper applicationMapper;
     private final JobRepository jobRepository;
+    private final FileStorageService fileStorageService;
 
     @Transactional
     public HRProfileDTO.Response upsertProfile(User user, HRProfileDTO.Request request) {
@@ -74,13 +76,36 @@ public class HRService {
 
     private ApplicationDTO.HrView toHrView(ApplicationEntity app, JobSeekerProfile profile) {
         ApplicationDTO.Response base = applicationMapper.toResponse(app);
+        // profile.getCvUrl() is an opaque server-generated filename, never
+        // exposed directly — HR gets the authenticated download endpoint
+        // instead (verifies job ownership again at download time).
+        boolean hasCv = profile != null && profile.getCvUrl() != null && !profile.getCvUrl().isBlank();
+        // Relative to the API base (no /api/v1 prefix) — matches every other
+        // path this service hands to the frontend's axios instance.
+        String cvDownloadUrl = hasCv ? "/hr/applications/" + app.getId() + "/cv" : null;
         return new ApplicationDTO.HrView(
                 base.id(), base.job(), base.applicant(), base.coverLetter(), base.appliedAt(), base.status(),
                 profile != null ? profile.getHeadline() : null,
                 profile != null ? profile.getYearsExperience() : null,
                 profile != null ? profile.getSkills() : null,
                 profile != null ? profile.getVisaStatus() : null,
-                profile != null ? profile.getCvUrl() : null);
+                cvDownloadUrl);
+    }
+
+    /** Resolves the applicant's CV file, after verifying the requesting HR user owns the job. */
+    @Transactional(readOnly = true)
+    public Path resolveApplicantCv(Long applicationId, User hrUser) {
+        // Same ownership + existence check used by updateApplicationStatus —
+        // one generic error for both "not found" and "not owned" avoids IDOR.
+        ApplicationEntity application = applicationRepository.findByIdAndJobOwner(applicationId, hrUser)
+                .orElseThrow(() -> new ValidationException("Application not found or access denied"));
+        User applicant = application.getUser();
+        JobSeekerProfile profile = seekerProfileRepository.findByUser(applicant)
+                .orElseThrow(() -> new ResourceNotFoundException("No CV on file"));
+        if (profile.getCvUrl() == null || profile.getCvUrl().isBlank()) {
+            throw new ResourceNotFoundException("No CV on file");
+        }
+        return fileStorageService.resolveCv(applicant.getId(), profile.getCvUrl());
     }
 
     @Transactional
@@ -96,7 +121,13 @@ public class HRService {
     /** Matches LinkedIn job IDs in URLs like {@code .../jobs/view/4401461297}. */
     private static final Pattern LINKEDIN_JOB_ID = Pattern.compile("/jobs/view/(\\d+)");
 
-    @Transactional
+    // Deliberately NOT @Transactional at this level: the audit row's fate must
+    // not be tied to whether the scrape + job creation ultimately succeeds.
+    // It used to be — the whole method (including the "failed" status write
+    // in the catch block) shared one transaction, so a scrape failure rolled
+    // back its own audit trail along with everything else, and the import
+    // table never recorded a single failure. jobService.create() is a
+    // separate bean call and keeps its own transaction regardless.
     public JobDTO.JobResponse importLinkedIn(User user, String linkedInUrl) {
         // Reject duplicates before paying for the scrape. We match on the
         // canonical /jobs/view/{id} segment so trailing tracking params
@@ -143,12 +174,14 @@ public class HRService {
             JobDTO.JobResponse response = jobService.create(request, user, "linkedin");
             importRecord.setStatus("processed");
             importRecord.setProcessedAt(OffsetDateTime.now());
+            linkedInImportRepository.save(importRecord);
             log.info("LinkedIn job imported: {} by user {}", response.title(), user.getId());
             return response;
         } catch (RuntimeException ex) {
             importRecord.setStatus("failed");
             importRecord.setErrorMessage(ex.getMessage());
             importRecord.setProcessedAt(OffsetDateTime.now());
+            linkedInImportRepository.save(importRecord);
             throw ex;
         }
     }

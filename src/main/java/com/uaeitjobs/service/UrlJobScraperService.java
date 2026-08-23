@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uaeitjobs.dto.UrlImportDTO;
 import com.uaeitjobs.exception.ValidationException;
+import com.uaeitjobs.util.SsrfGuard;
 import lombok.extern.slf4j.Slf4j;
+import org.jsoup.Connection;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -17,7 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import java.net.InetAddress;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URL;
 import java.time.Duration;
@@ -111,7 +113,7 @@ public class UrlJobScraperService {
         if (rawUrl == null || rawUrl.isBlank()) throw new ValidationException("URL is required");
         String url = rawUrl.strip();
         if (!url.startsWith("https://")) throw new ValidationException("Only HTTPS URLs are supported");
-        validateNoSsrf(url);
+        SsrfGuard.validate(url);
 
         try {
             // ── Phase 1: Direct ATS board URLs (Lever, Ashby, direct Greenhouse) ──
@@ -120,12 +122,7 @@ public class UrlJobScraperService {
             if (direct != null) return direct;
 
             // ── Phase 2: Fetch HTML ───────────────────────────────────────────────
-            Document doc = Jsoup.connect(url)
-                    .userAgent("Mozilla/5.0 (compatible; UAEITBot/1.0; +https://www.uaeitjobs.com)")
-                    .header("Accept-Language", "en-US,en;q=0.9")
-                    .timeout(12_000)
-                    .followRedirects(true)
-                    .get();
+            Document doc = fetchWithSsrfGuard(url);
 
             // ── Phase 3: Embedded ATS widget detected in page HTML ────────────────
             // Company career pages often embed Greenhouse / Workable via a <script>
@@ -176,14 +173,17 @@ public class UrlJobScraperService {
         } catch (ValidationException ve) {
             throw ve;
         } catch (Exception ex) {
+            // Full detail (connection-refused vs. timeout vs. HTTP status, and
+            // for which host, since a redirect may have moved off the original
+            // one) is logged server-side only. Echoing it back to the caller
+            // would turn any fetch failure into a host/port probe for whatever
+            // internal address the SSRF guard just rejected.
             log.warn("Could not fetch {}: {}", url, ex.getMessage());
-            // Return a minimal shell so the admin can still fill in the job manually.
             return UrlImportDTO.Preview.builder()
                     .applyUrl(url)
                     .companyName(blankToNull(companyFromDomain(url)))
                     .complete(false)
-                    .message("Could not fetch page (" + ex.getMessage()
-                            + "). Fill in the details manually and click Import.")
+                    .message("Could not fetch this page. Fill in the details manually and click Import.")
                     .build();
         }
     }
@@ -830,23 +830,40 @@ public class UrlJobScraperService {
         return "Some fields could not be extracted. Review and fill in any missing details below.";
     }
 
-    // ── SSRF guard ────────────────────────────────────────────────────────────
+    // ── SSRF-safe fetch ──────────────────────────────────────────────────────
 
-    private void validateNoSsrf(String rawUrl) {
-        try {
-            String host = new URL(rawUrl).getHost();
-            if (host == null || host.isBlank()) throw new ValidationException("Malformed URL — no host");
-            InetAddress addr = InetAddress.getByName(host);
-            if (addr.isLoopbackAddress() || addr.isSiteLocalAddress()
-                    || addr.isLinkLocalAddress() || addr.isAnyLocalAddress()
-                    || addr.isMulticastAddress()) {
-                log.warn("SSRF probe blocked — {} resolved to forbidden address {}", host, addr.getHostAddress());
-                throw new ValidationException("URL resolves to a forbidden network address");
+    private static final int MAX_REDIRECTS = 5;
+
+    /**
+     * Fetches {@code startUrl}, validating every redirect hop against
+     * {@link SsrfGuard} before following it — an initial check on the
+     * submitted URL alone isn't enough, since a 302 can point anywhere,
+     * including the host's own internal network.
+     *
+     * <p>Package-private for unit tests.
+     */
+    Document fetchWithSsrfGuard(String startUrl) throws IOException {
+        String currentUrl = startUrl;
+        for (int hop = 0; hop < MAX_REDIRECTS; hop++) {
+            SsrfGuard.validate(currentUrl);
+            Connection.Response response = Jsoup.connect(currentUrl)
+                    .userAgent("Mozilla/5.0 (compatible; UAEITBot/1.0; +https://www.uaeitjobs.com)")
+                    .header("Accept-Language", "en-US,en;q=0.9")
+                    .timeout(12_000)
+                    .followRedirects(false)
+                    .execute();
+
+            int status = response.statusCode();
+            if (status >= 300 && status < 400) {
+                String location = response.header("Location");
+                if (location == null || location.isBlank()) {
+                    throw new ValidationException("Redirect response had no Location header");
+                }
+                currentUrl = URI.create(currentUrl).resolve(location).toString();
+                continue;
             }
-        } catch (java.net.MalformedURLException e) {
-            throw new ValidationException("Malformed URL");
-        } catch (java.net.UnknownHostException e) {
-            throw new ValidationException("Could not resolve URL host: " + e.getMessage());
+            return response.parse();
         }
+        throw new ValidationException("Too many redirects (>" + MAX_REDIRECTS + ")");
     }
 }

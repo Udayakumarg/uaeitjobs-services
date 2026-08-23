@@ -7,7 +7,9 @@ import com.uaeitjobs.util.PageUtil;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.regex.Pattern;
@@ -22,6 +24,7 @@ public class HRController {
     private final CurrentUserService currentUserService;
     private final UrlJobScraperService urlJobScraperService;
     private final LinkedInScraperService linkedInScraperService;
+    private final FileStorageService fileStorageService;
 
     private static final Pattern LINKEDIN_JOB_URL =
             Pattern.compile("https?://([a-z]{2,3}\\.)?linkedin\\.com/jobs/view/.*", Pattern.CASE_INSENSITIVE);
@@ -49,6 +52,11 @@ public class HRController {
     @PatchMapping("/applications/{id}")
     public ApplicationDTO.Response updateApplication(@PathVariable Long id, @Valid @RequestBody ApplicationDTO.StatusRequest request) {
         return hrService.updateApplicationStatus(id, currentUserService.get(), request.status());
+    }
+
+    @GetMapping("/hr/applications/{id}/cv")
+    public ResponseEntity<Resource> downloadApplicantCv(@PathVariable Long id) {
+        return fileStorageService.asDownloadResponse(hrService.resolveApplicantCv(id, currentUserService.get()));
     }
 
     @PostMapping("/linkedin-import")

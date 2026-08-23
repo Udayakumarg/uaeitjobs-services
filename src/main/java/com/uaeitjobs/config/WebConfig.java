@@ -21,7 +21,10 @@ public class WebConfig implements WebMvcConfigurer {
                         "/api/v1/jobs/**",
                         "/api/v1/skills/**",
                         "/api/v1/stats",
-                        "/api/v1/locations"
+                        "/api/v1/locations",
+                        // Makes a synchronous outbound LLM call — was previously unmetered,
+                        // so a looped request could exhaust the DB connection pool.
+                        "/api/v1/job-seeker/applications/draft"
                 );
     }
 }

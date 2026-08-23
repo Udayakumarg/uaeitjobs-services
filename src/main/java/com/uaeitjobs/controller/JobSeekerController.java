@@ -9,10 +9,14 @@ import com.uaeitjobs.entity.User;
 import com.uaeitjobs.service.CurrentUserService;
 import com.uaeitjobs.service.JobSeekerService;
 import com.uaeitjobs.util.PageUtil;
+import com.uaeitjobs.service.FileStorageService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -26,6 +30,7 @@ import java.util.Set;
 public class JobSeekerController {
     private final JobSeekerService jobSeekerService;
     private final CurrentUserService currentUserService;
+    private final FileStorageService fileStorageService;
 
     @PostMapping("/job-seeker/profile")
     public JobSeekerProfileDTO.Response upsertProfile(@RequestBody JobSeekerProfileDTO.Request request) {
@@ -40,6 +45,11 @@ public class JobSeekerController {
     @PostMapping("/job-seeker/cv")
     public JobSeekerProfileDTO.Response uploadCv(@RequestParam("file") MultipartFile file) {
         return jobSeekerService.uploadCv(currentUserService.get(), file);
+    }
+
+    @GetMapping("/job-seeker/cv")
+    public ResponseEntity<Resource> downloadOwnCv() {
+        return fileStorageService.asDownloadResponse(jobSeekerService.resolveOwnCv(currentUserService.get()));
     }
 
     @PatchMapping("/job-seeker/skills")
@@ -62,6 +72,7 @@ public class JobSeekerController {
      */
     @PostMapping("/applications/track")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('JOB_SEEKER')")
     public void trackApply(@RequestBody Map<String, Long> body) {
         Long jobId = body.get("jobId");
         if (jobId == null) return;
@@ -80,6 +91,7 @@ public class JobSeekerController {
      * objects just to get IDs.
      */
     @GetMapping("/applications/job-ids")
+    @PreAuthorize("hasRole('JOB_SEEKER')")
     public Set<Long> appliedJobIds() {
         return jobSeekerService.appliedJobIds(currentUserService.get());
     }
