@@ -3,6 +3,7 @@ package com.uaeitjobs.controller;
 import com.uaeitjobs.dto.ApplicationDTO;
 import com.uaeitjobs.dto.JobSeekerProfileDTO;
 import com.uaeitjobs.dto.SavedJobDTO;
+import com.uaeitjobs.dto.SavedSearchDTO;
 import com.uaeitjobs.dto.SeekerAiDTO;
 import com.uaeitjobs.entity.User;
 import com.uaeitjobs.service.CurrentUserService;
@@ -98,6 +99,22 @@ public class JobSeekerController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void unsaveJob(@PathVariable Long jobId) {
         jobSeekerService.unsaveJob(currentUserService.get(), jobId);
+    }
+
+    @GetMapping("/saved-searches")
+    public List<SavedSearchDTO.Response> savedSearches() {
+        return jobSeekerService.savedSearches(currentUserService.get());
+    }
+
+    @PostMapping("/saved-searches")
+    public SavedSearchDTO.Response saveSearch(@RequestBody SavedSearchDTO.Request request) {
+        return jobSeekerService.saveSearch(currentUserService.get(), request);
+    }
+
+    @DeleteMapping("/saved-searches/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteSearch(@PathVariable Long id) {
+        jobSeekerService.deleteSearch(currentUserService.get(), id);
     }
 
     // ── AI-drafted cover letters — seeker supplies their own provider key ──

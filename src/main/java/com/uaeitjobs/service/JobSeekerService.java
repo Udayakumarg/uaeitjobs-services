@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uaeitjobs.dto.ApplicationDTO;
 import com.uaeitjobs.dto.JobSeekerProfileDTO;
 import com.uaeitjobs.dto.SavedJobDTO;
+import com.uaeitjobs.dto.SavedSearchDTO;
 import com.uaeitjobs.dto.SeekerAiDTO;
 import com.uaeitjobs.entity.*;
 import com.uaeitjobs.exception.ResourceNotFoundException;
@@ -49,6 +50,7 @@ public class JobSeekerService {
     private final JobRepository jobRepository;
     private final ApplicationRepository applicationRepository;
     private final SavedJobRepository savedJobRepository;
+    private final SavedSearchRepository savedSearchRepository;
     private final ApplicationMapper applicationMapper;
     private final JobMapper jobMapper;
     private final FileStorageService fileStorageService;
@@ -167,6 +169,41 @@ public class JobSeekerService {
     public void unsaveJob(User user, Long jobId) {
         Job job = jobRepository.findById(jobId).orElseThrow(() -> new ResourceNotFoundException("Job not found"));
         savedJobRepository.deleteByUserAndJob(user, job);
+    }
+
+    // ── Saved searches — a named filter combo the seeker can re-apply later.
+    // "filters" is stored exactly as the Browse page's own URL query string,
+    // so re-applying one is just navigating to /jobs?{filters} — no separate
+    // parsing/serialisation format to keep in sync with the filter bar.
+
+    @Transactional(readOnly = true)
+    public List<SavedSearchDTO.Response> savedSearches(User user) {
+        return savedSearchRepository.findByUserOrderByCreatedAtDesc(user).stream()
+                .map(s -> new SavedSearchDTO.Response(s.getId(), s.getName(), s.getFilters(), s.getCreatedAt()))
+                .toList();
+    }
+
+    @Transactional
+    public SavedSearchDTO.Response saveSearch(User user, SavedSearchDTO.Request request) {
+        if (request.name() == null || request.name().isBlank()) {
+            throw new ValidationException("name is required");
+        }
+        if (request.filters() == null || request.filters().isBlank()) {
+            throw new ValidationException("filters is required");
+        }
+        SavedSearch search = new SavedSearch();
+        search.setUser(user);
+        search.setName(request.name().trim());
+        search.setFilters(request.filters());
+        SavedSearch saved = savedSearchRepository.save(search);
+        return new SavedSearchDTO.Response(saved.getId(), saved.getName(), saved.getFilters(), saved.getCreatedAt());
+    }
+
+    @Transactional
+    public void deleteSearch(User user, Long id) {
+        SavedSearch search = savedSearchRepository.findByIdAndUser(id, user)
+                .orElseThrow(() -> new ResourceNotFoundException("Saved search not found"));
+        savedSearchRepository.delete(search);
     }
 
     // ── AI-drafted cover letters ────────────────────────────────────────────
