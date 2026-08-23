@@ -26,7 +26,7 @@ cd /opt/apps/uaeitjobs && docker compose pull uaeitjobs-backend && docker stop u
 ## Critical state (June 2026)
 - `@Transactional(REQUIRES_NEW)` on login attempt logging — do not change propagation
 - Rate limit: 10 req/min · error: "Rate limit exceeded. Please try again shortly."
-- `JobDTOTest.EXPECTED_FIELD_COUNT = 31` — increment when adding fields to `JobResponse`
+- Anonymous users see full `applyUrl`/`linkedinUrl` on every job — the old sign-up-gated masking (`withMaskedApply()`, `JobDTOTest`) was removed 2026-08 (product decision: users benefit over forced signups). Do not reintroduce it.
 - `jobLocation` in JSON-LD: handled as array AND object in `UrlJobScraperService`
 - `inferUaeCity()` normalises hyphens: `text.toLowerCase().replace('-', ' ')`
 - `LinkedInJobData` has `location` field — `HRController.importPreview()` sets `.locationUae(ld.getLocation())`

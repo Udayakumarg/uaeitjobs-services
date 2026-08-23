@@ -15,7 +15,6 @@ import com.uaeitjobs.repository.UserRepository;
 import com.uaeitjobs.service.ingest.pipeline.CompanyLogoResolver;
 import com.uaeitjobs.service.ingest.pipeline.description.HeuristicDescriptionFormatter;
 import com.uaeitjobs.util.JobCategoryClassifier;
-import com.uaeitjobs.util.SecurityUtils;
 import com.uaeitjobs.util.SlugGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,9 +42,7 @@ public class JobService {
     private final ObjectMapper objectMapper;
 
     public Page<JobDTO.JobResponse> list(Pageable pageable) {
-        boolean authed = SecurityUtils.isAuthenticated();
-        return jobRepository.findByActiveTrue(pageable)
-                .map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
+        return jobRepository.findByActiveTrue(pageable).map(jobMapper::toResponse);
     }
 
     /** Admin-only: list all jobs (active + archived) with optional search and active filter. */
@@ -72,8 +69,7 @@ public class JobService {
         Job job = jobRepository.findByIdAndActiveTrue(id).orElseThrow(() -> new ResourceNotFoundException("Job not found"));
         jobRepository.incrementViewCount(id);
         job.setViewCount(job.getViewCount() + 1);
-        JobDTO.JobResponse resp = jobMapper.toResponse(job);
-        return SecurityUtils.isAuthenticated() ? resp : resp.withMaskedApply();
+        return jobMapper.toResponse(job);
     }
 
     public Page<JobDTO.JobResponse> filter(String type, String level, String location, String skill, Pageable pageable) {
@@ -86,7 +82,6 @@ public class JobService {
         // Strip the JPA-style Sort — the native filter query owns its own
         // ORDER BY, and Spring would otherwise append `order by createdAt`
         // (camelCase property) which fails against the snake_case column.
-        boolean  authed   = SecurityUtils.isAuthenticated();
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
         return jobRepository.filter(
                 blankToNull(type),
@@ -98,7 +93,7 @@ public class JobService {
                 Boolean.TRUE.equals(immediateJoiner) ? Boolean.TRUE : null,
                 Boolean.TRUE.equals(remoteUae) ? Boolean.TRUE : null,
                 blankToNull(category),
-                unsorted).map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
+                unsorted).map(jobMapper::toResponse);
     }
 
     /**
@@ -126,7 +121,6 @@ public class JobService {
                                                 String visaType,
                                                 Pageable pageable) {
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
-        boolean  authed   = SecurityUtils.isAuthenticated();
         return jobRepository.filterMulti(
                 joinOrEmpty(emirate),
                 joinOrEmpty(category),
@@ -145,7 +139,7 @@ public class JobService {
                 Boolean.TRUE.equals(linkedinEasyApply) ? Boolean.TRUE : null,
                 normalizeVisaType(visaType),
                 unsorted
-        ).map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
+        ).map(jobMapper::toResponse);
     }
 
     private static String joinOrEmpty(java.util.List<String> list) {
@@ -182,10 +176,8 @@ public class JobService {
             return list(pageable);
         }
         // Search native query has its own ORDER BY (ts_rank) — strip Sort.
-        boolean  authed   = SecurityUtils.isAuthenticated();
         Pageable unsorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
-        return jobRepository.search(query, unsorted)
-                .map(job -> authed ? jobMapper.toResponse(job) : jobMapper.toResponse(job).withMaskedApply());
+        return jobRepository.search(query, unsorted).map(jobMapper::toResponse);
     }
 
     @Transactional
