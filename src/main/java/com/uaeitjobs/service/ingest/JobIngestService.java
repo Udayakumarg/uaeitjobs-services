@@ -12,7 +12,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -161,7 +160,10 @@ public class JobIngestService {
         return combined;
     }
 
-    @Transactional
+    // Not @Transactional: this method is only ever called via `this.` from
+    // runAll(), which bypasses Spring's proxy — the annotation would be inert
+    // either way. Per-item atomicity already comes from JobIngestPipeline.process(),
+    // which the caller reaches through a real injected bean, not self-invocation.
     public Counters runJSearchForKeyword(KeywordSearchStrategy kw) {
         IngestRunLog runLog = openLog("jsearch", kw.getKeyword());
         Counters c = new Counters();
@@ -193,7 +195,7 @@ public class JobIngestService {
     }
 
     // ─── Generic source run (Adzuna/RemoteOK/Himalayas) ──────
-    @Transactional
+    // Not @Transactional — see runJSearchForKeyword() above for why.
     public Counters runGeneric(JobIngestSource source) {
         IngestRunLog runLog = openLog(source.name(), null);
         Counters c = new Counters();

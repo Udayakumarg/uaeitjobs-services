@@ -5,6 +5,7 @@ import com.uaeitjobs.entity.Job;
 import com.uaeitjobs.entity.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,8 +15,16 @@ import java.util.Set;
 
 public interface ApplicationRepository extends JpaRepository<ApplicationEntity, Long> {
     boolean existsByJobAndUser(Job job, User user);
+
+    // job and user are both mapped LAZY — without the fetch join, mapping a
+    // page of results (which dereferences both) costs one query per row on
+    // top of the page query itself (N+1).
+    @EntityGraph(attributePaths = {"job", "user"})
     Page<ApplicationEntity> findByUser(User user, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"job", "user"})
     Page<ApplicationEntity> findByJob(Job job, Pageable pageable);
+
     long countByJob(Job job);
 
     /** Returns the set of job IDs the user has applied to — used by the

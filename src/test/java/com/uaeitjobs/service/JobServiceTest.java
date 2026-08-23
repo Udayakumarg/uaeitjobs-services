@@ -12,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verify;
@@ -23,6 +24,7 @@ class JobServiceTest {
     @Mock UserRepository userRepository;
     @Mock JobMapper jobMapper;
     @Mock SubscriptionService subscriptionService;
+    @Mock AsyncDescriptionEnhancer asyncDescriptionEnhancer;
     @InjectMocks JobService jobService;
 
     @Test
@@ -54,5 +56,31 @@ class JobServiceTest {
                 .isInstanceOf(ValidationException.class);
 
         verify(jobRepository).findById(5L);
+    }
+
+    @Test
+    void detailDoesNotMutateTheManagedEntitysViewCount() {
+        Job job = new Job();
+        job.setId(9L);
+        job.setViewCount(10);
+        when(jobRepository.findByIdAndActiveTrue(9L)).thenReturn(java.util.Optional.of(job));
+
+        jobService.detail(9L);
+
+        verify(jobRepository).incrementViewCount(9L);
+        // Mutating the managed entity's field too is what let Hibernate's
+        // dirty-check overwrite the atomic UPDATE with a stale read-modify-write
+        // at flush, so two concurrent views only counted as +1 instead of +2.
+        org.assertj.core.api.Assertions.assertThat(job.getViewCount()).isEqualTo(10);
+    }
+
+    @Test
+    void scheduleAsyncEnhancementRunsImmediatelyWhenNoTransactionIsActive() {
+        // Outside a real Spring transaction (as here), there's nothing to defer
+        // to — the fallback path must still call enhance() rather than silently
+        // dropping it.
+        ReflectionTestUtils.invokeMethod(jobService, "scheduleAsyncEnhancement", 42L, "raw text", "manual");
+
+        verify(asyncDescriptionEnhancer).enhance(42L, "raw text", "manual");
     }
 }

@@ -174,6 +174,13 @@ public class JobIngestPipeline {
         OffsetDateTime now = OffsetDateTime.now();
         if (match.isDuplicate()) {
             Job existing = match.existing();
+            // L1/L2 intentionally match regardless of active status (so a
+            // re-discovered listing reactivates the same row instead of
+            // creating a duplicate) — but nothing used to flip `active` back
+            // on, so a job that JobMaintenanceScheduler had auto-expired
+            // stayed invisible forever even once every later re-ingest kept
+            // finding and "updating" it.
+            existing.setActive(true);
             existing.setLastSeenAt(now);
             existing.setDuplicateSourceCount(existing.getDuplicateSourceCount() + 1);
             // refresh the apply URL & publisher in case the new source has a more direct link

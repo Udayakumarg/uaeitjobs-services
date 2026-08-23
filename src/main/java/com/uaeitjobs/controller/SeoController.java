@@ -2,6 +2,8 @@ package com.uaeitjobs.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.uaeitjobs.entity.HiringCompany;
 import com.uaeitjobs.entity.Job;
 import com.uaeitjobs.repository.JobRepository;
@@ -19,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Duration;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -45,8 +48,26 @@ public class SeoController {
     @Value("${app.public-url:https://www.uaeitjobs.com}")
     private String publicUrl;
 
+    // /sitemap.xml is public and unmetered by the rate limiter (search-engine
+    // crawlers need to be able to hit it freely) and used to rebuild the full
+    // 5000-row XML document from scratch on every single request — a cheap
+    // request loop was a real CPU/memory DoS. One cache entry (no request-scoped
+    // key needed — the whole XML document is the value) with a short TTL keeps
+    // it fresh enough for a job board while making repeat hits nearly free.
+    private static final String SITEMAP_CACHE_KEY = "sitemap";
+    private final Cache<String, String> sitemapCache = Caffeine.newBuilder()
+            .maximumSize(1)
+            .expireAfterWrite(Duration.ofMinutes(10))
+            .build();
+
     @GetMapping(value = "/sitemap.xml", produces = MediaType.APPLICATION_XML_VALUE)
     public ResponseEntity<String> sitemap() {
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_XML)
+                .body(sitemapCache.get(SITEMAP_CACHE_KEY, key -> buildSitemapXml()));
+    }
+
+    private String buildSitemapXml() {
         StringBuilder xml = new StringBuilder(8192);
         xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         xml.append("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
@@ -77,9 +98,7 @@ public class SeoController {
         }
 
         xml.append("</urlset>\n");
-        return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_XML)
-                .body(xml.toString());
+        return xml.toString();
     }
 
     @GetMapping(value = "/robots.txt", produces = MediaType.TEXT_PLAIN_VALUE)

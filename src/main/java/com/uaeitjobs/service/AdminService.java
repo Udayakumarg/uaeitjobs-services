@@ -38,6 +38,7 @@ public class AdminService {
     private final UserRepository userRepository;
     private final JobRepository jobRepository;
     private final ApplicationRepository applicationRepository;
+    private final CurrentUserService currentUserService;
     private final PasswordEncoder passwordEncoder;
     private final EmailVerificationTokenRepository emailVerificationTokenRepository;
     private final RefreshTokenRepository refreshTokenRepository;
@@ -127,10 +128,13 @@ public class AdminService {
 
     @Transactional
     public void deleteUser(Long id) {
-        if (!userRepository.existsById(id)) {
-            throw new ResourceNotFoundException("User not found");
-        }
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        String email = user.getEmail();
         userRepository.deleteById(id);
+        // Otherwise the 2-minute Caffeine cache in CurrentUserService keeps
+        // serving the now-deleted user for the rest of the cache window.
+        currentUserService.evict(email);
     }
 
     /**

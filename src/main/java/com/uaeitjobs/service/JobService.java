@@ -23,6 +23,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.OffsetDateTime;
 import java.util.Arrays;
@@ -67,8 +69,13 @@ public class JobService {
     @Transactional
     public JobDTO.JobResponse detail(Long id) {
         Job job = jobRepository.findByIdAndActiveTrue(id).orElseThrow(() -> new ResourceNotFoundException("Job not found"));
+        // incrementViewCount is an atomic `SET view_count = view_count + 1` —
+        // mutating the managed entity's field too used to make Hibernate's
+        // dirty-check overwrite that atomic update at flush with a stale
+        // read-modify-write, so two concurrent views produced +1, not +2.
+        // The response below reflects the pre-increment count; that's fine
+        // for a view counter and self-corrects on the next view.
         jobRepository.incrementViewCount(id);
-        job.setViewCount(job.getViewCount() + 1);
         return jobMapper.toResponse(job);
     }
 
@@ -217,9 +224,30 @@ public class JobService {
         String combinedRaw = combineForFormatting(request.description(), request.requirements());
         job.setDescriptionHtml(heuristicFormatter.toHtml(combinedRaw));
         Job saved = jobRepository.save(job);
-        asyncDescriptionEnhancer.enhance(saved.getId(), combinedRaw, source);
+        scheduleAsyncEnhancement(saved.getId(), combinedRaw, source);
         subscriptionService.incrementPosted(user);
         return jobMapper.toResponse(saved);
+    }
+
+    /**
+     * Defers {@link AsyncDescriptionEnhancer#enhance} until this transaction
+     * commits. Calling it inline (mid-transaction) let the async thread race
+     * ahead of the commit — it could call {@code findById} before the new job
+     * row was visible, hit the "disappeared" branch, and silently drop the
+     * LLM output. Falls back to calling it directly when there's no active
+     * transaction to hook (e.g. a bare unit test).
+     */
+    private void scheduleAsyncEnhancement(Long jobId, String combinedRaw, String source) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    asyncDescriptionEnhancer.enhance(jobId, combinedRaw, source);
+                }
+            });
+        } else {
+            asyncDescriptionEnhancer.enhance(jobId, combinedRaw, source);
+        }
     }
 
     @Transactional

@@ -61,16 +61,31 @@ public class Normalizers {
         return stripped;
     }
 
+    /**
+     * True if {@code haystack} contains any of the {@code |}-separated
+     * alternatives as a whole word, anywhere in the string.
+     *
+     * <p>Deliberately uses {@link Matcher#find()} rather than
+     * {@code String.matches(".*...*")} — with {@code matches()}, {@code .}
+     * doesn't match {@code \n} by default, so wrapping a word-boundary check
+     * in {@code .*...*} silently failed on any multi-line description (i.e.
+     * nearly all of them), falling through every branch to "mid". {@code find()}
+     * has no such requirement since there's no {@code .*} wrapper needed.
+     */
+    private static boolean containsWord(String haystack, String alternationPattern) {
+        return Pattern.compile("\\b(?:" + alternationPattern + ")\\b").matcher(haystack).find();
+    }
+
     /** Returns one of: intern | junior | mid | senior | lead | manager | architect */
     public String classifySeniority(String title, String description) {
         String haystack = ((title == null ? "" : title) + " " + (description == null ? "" : description))
                 .toLowerCase(Locale.ROOT);
-        if (haystack.contains("architect"))                                              return "architect";
-        if (haystack.matches(".*\\b(engineering manager|head of|director)\\b.*"))        return "manager";
-        if (haystack.matches(".*\\b(lead|principal|staff)\\b.*"))                        return "lead";
-        if (haystack.matches(".*\\b(senior|sr\\.?|sr\\b)\\b.*"))                         return "senior";
-        if (haystack.matches(".*\\b(junior|jr\\.?|jr\\b|entry|graduate)\\b.*"))          return "junior";
-        if (haystack.matches(".*\\bintern(ship)?\\b.*"))                                 return "intern";
+        if (containsWord(haystack, "architect"))                                return "architect";
+        if (containsWord(haystack, "engineering manager|head of|director"))     return "manager";
+        if (containsWord(haystack, "lead|principal|staff"))                     return "lead";
+        if (containsWord(haystack, "senior|sr\\.?"))                            return "senior";
+        if (containsWord(haystack, "junior|jr\\.?|entry|graduate"))             return "junior";
+        if (containsWord(haystack, "intern(ship)?"))                            return "intern";
         return "mid";
     }
 
@@ -79,8 +94,8 @@ public class Normalizers {
         if (isRemoteFlag) return "remote";
         String haystack = ((title == null ? "" : title) + " " + (description == null ? "" : description))
                 .toLowerCase(Locale.ROOT);
-        if (haystack.contains("hybrid"))                          return "hybrid";
-        if (haystack.matches(".*\\b(remote|work from home|wfh)\\b.*")) return "remote";
+        if (containsWord(haystack, "hybrid"))                    return "hybrid";
+        if (containsWord(haystack, "remote|work from home|wfh")) return "remote";
         return "onsite";
     }
 
