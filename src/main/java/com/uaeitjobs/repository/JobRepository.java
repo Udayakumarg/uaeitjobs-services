@@ -267,6 +267,12 @@ public interface JobRepository extends JpaRepository<Job, Long> {
           and (cast(:linkedinEasyApply as boolean) is null or j.linkedin_easy_apply = :linkedinEasyApply)
           and (:visaType = '' or j.visa_type = :visaType)
         order by
+          -- Explicit date sort ("Newest first" / "Oldest first") always wins,
+          -- even over search relevance below — a user who asked for newest-
+          -- first expects exactly that, not relevance with date as an
+          -- almost-never-reached tiebreaker.
+          case when :sortBy = 'newest'   then j.created_at end desc nulls last,
+          case when :sortBy = 'date_asc' then j.created_at end asc  nulls last,
           case when :q != ''
                then ts_rank(to_tsvector('english',
                     coalesce(j.title,'') || ' ' ||
