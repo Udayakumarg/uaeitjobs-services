@@ -43,4 +43,10 @@ jobs:
           script: |
             cd /opt/apps/uaeitjobs
             docker compose pull uaeitjobs-backend
-            docker compose up -d --no-deps --no-build --force-recreate uaeitjobs-backend
+            # --force-recreate intermittently races compose's own stop+remove of the
+            # old container, failing with "container name already in use" (seen twice
+            # in production). Doing it explicitly first is the reliable version of the
+            # same operation.
+            docker stop uaeitjobs-backend || true
+            docker rm uaeitjobs-backend || true
+            docker compose up -d --no-deps --no-build uaeitjobs-backend
