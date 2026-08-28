@@ -213,6 +213,21 @@ public class JobSeekerService {
     }
 
     @Transactional
+    public SavedSearchDTO.Response updateSearch(User user, Long id, SavedSearchDTO.Request request) {
+        if (request.name() == null || request.name().isBlank()) {
+            throw new ValidationException("name is required");
+        }
+        if (request.filters() == null || request.filters().isBlank()) {
+            throw new ValidationException("filters is required");
+        }
+        SavedSearch search = savedSearchRepository.findByIdAndUser(id, user)
+                .orElseThrow(() -> new ResourceNotFoundException("Saved search not found"));
+        search.setName(request.name().trim());
+        search.setFilters(request.filters());
+        return new SavedSearchDTO.Response(search.getId(), search.getName(), search.getFilters(), search.getCreatedAt());
+    }
+
+    @Transactional
     public void deleteSearch(User user, Long id) {
         SavedSearch search = savedSearchRepository.findByIdAndUser(id, user)
                 .orElseThrow(() -> new ResourceNotFoundException("Saved search not found"));

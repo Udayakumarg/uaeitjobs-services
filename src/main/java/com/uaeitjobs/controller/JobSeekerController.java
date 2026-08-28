@@ -123,6 +123,11 @@ public class JobSeekerController {
         return jobSeekerService.saveSearch(currentUserService.get(), request);
     }
 
+    @PatchMapping("/saved-searches/{id}")
+    public SavedSearchDTO.Response updateSearch(@PathVariable Long id, @RequestBody SavedSearchDTO.Request request) {
+        return jobSeekerService.updateSearch(currentUserService.get(), id, request);
+    }
+
     @DeleteMapping("/saved-searches/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteSearch(@PathVariable Long id) {
