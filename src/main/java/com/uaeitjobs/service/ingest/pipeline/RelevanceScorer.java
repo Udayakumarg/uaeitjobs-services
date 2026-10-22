@@ -28,7 +28,10 @@ public class RelevanceScorer {
     private static final Pattern TECH_DOMAIN = Pattern.compile(
             "(?i)\\b(it|ict|qa|automation|sdet|tester|software|backend|frontend|full[-\\s]?stack|" +
                     "devops|sre|platform|cloud|data|machine learning|ml|ai|security|cyber|" +
-                    "mobile|ios|android|architect|engineer|developer|programmer)\\b"
+                    // "mobile" alone also matched "Mobile Crane Operator" (40 points = the minimum score),
+                    // so only count it when it is clearly about apps.
+                    "mobile\\s+(?:app|apps|application|applications|developer|engineer|development)|" +
+                    "ios|android|architect|engineer|developer|programmer)\\b"
     );
 
     // Narrowed to patterns that are UNAMBIGUOUSLY non-IT.
@@ -46,6 +49,19 @@ public class RelevanceScorer {
                     "truck driver|delivery driver|delivery boy|food delivery|" +
                     "chef|cook|waiter|barista|housekeep|" +
                     "lawyer|paralegal|teacher|tutor)\\b"
+    );
+
+    // Trades and site work that slipped through on the generic words "engineer"/"operator".
+    // Kept separate from STRONG_NEGATIVE because a clear IT word overrides it:
+    // "Application Engineer - Autodesk Construction Cloud" is a software role.
+    private static final Pattern TRADE_NEGATIVE = Pattern.compile(
+            "(?i)\\b(crane|forklift|mechanics?|electrician|plumber|carpenter|welder|mason|" +
+                    "scaffold(?:er|ing)?|construction|quantity surveyor|hvac|piping)\\b"
+    );
+
+    private static final Pattern TRADE_IT_OVERRIDE = Pattern.compile(
+            "(?i)\\b(software|cloud|developer|devops|data|cyber|security|qa|erp|sap|platform|" +
+                    "application|app|digital|ai|ml|it|ict)\\b"
     );
 
     private static final Pattern UAE_LOCATION = Pattern.compile(
@@ -96,6 +112,7 @@ public class RelevanceScorer {
     public boolean hardReject(String title, String location, String country, String description) {
         if (title == null || title.isBlank()) return true;
         if (STRONG_NEGATIVE.matcher(title).find()) return true;
+        if (TRADE_NEGATIVE.matcher(title).find() && !TRADE_IT_OVERRIDE.matcher(title).find()) return true;
 
         // If location explicitly names a non-UAE country, reject immediately.
         // This catches JSearch jobs where country="AE" (search param) but the
