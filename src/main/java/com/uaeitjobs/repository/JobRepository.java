@@ -272,13 +272,13 @@ public interface JobRepository extends JpaRepository<Job, Long> {
           -- first expects exactly that, not relevance with date as an
           -- almost-never-reached tiebreaker.
           -- "Newest first" ranks a job that only carries a title/one-line summary
-          -- (description under 300 chars) as if it were 3 days older, so equally
+          -- (description under 300 chars) as if it were 5 days older, so equally
           -- fresh postings with a real description list first without thin ones
           -- disappearing from the 80-row page.
           case when :sortBy = 'newest'
                then j.created_at
                     - case when length(coalesce(j.description, '')) < 300
-                           then interval '3 days' else interval '0 days' end
+                           then interval '5 days' else interval '0 days' end
           end desc nulls last,
           case when :sortBy = 'date_asc' then j.created_at end asc  nulls last,
           case when :q != ''
