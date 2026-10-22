@@ -1,9 +1,9 @@
 package com.uaeitjobs.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.uaeitjobs.controller.seo.JobSeoPage;
 import com.uaeitjobs.entity.HiringCompany;
 import com.uaeitjobs.entity.Job;
 import com.uaeitjobs.repository.JobRepository;
@@ -145,99 +145,22 @@ public class SeoController {
     }
 
     private String buildJobMetaHtml(Job job) {
-        String title       = esc(job.getTitle()) + " at " + esc(job.getCompanyName()) + " | UAEITJOBS";
-        String description = buildDescription(job);
-        String url         = publicUrl + "/jobs/" + job.getId();
-        String image       = job.getCompanyLogoUrl() != null && !job.getCompanyLogoUrl().isBlank()
-                             ? esc(job.getCompanyLogoUrl())
-                             : publicUrl + "/logo-full.png";
-
-        return """
-                <!doctype html>
-                <html lang="en">
-                <head>
-                  <meta charset="UTF-8"/>
-                  <title>%s</title>
-                  <meta name="description" content="%s"/>
-                  <!-- Open Graph -->
-                  <meta property="og:type"        content="website"/>
-                  <meta property="og:site_name"   content="UAEITJOBS"/>
-                  <meta property="og:title"        content="%s"/>
-                  <meta property="og:description" content="%s"/>
-                  <meta property="og:url"          content="%s"/>
-                  <meta property="og:image"        content="%s"/>
-                  <!-- Twitter / X -->
-                  <meta name="twitter:card"        content="summary"/>
-                  <meta name="twitter:title"       content="%s"/>
-                  <meta name="twitter:description" content="%s"/>
-                  <meta name="twitter:image"       content="%s"/>
-                  <!-- JSON-LD -->
-                  <script type="application/ld+json">%s</script>
-                </head>
-                <body></body>
-                </html>
-                """.formatted(
-                title, description,
-                title, description, url, image,
-                title, description, image,
-                buildJsonLd(job, url));
-    }
-
-    private String buildDescription(Job job) {
-        String base = job.getDescription() != null && !job.getDescription().isBlank()
-                ? job.getDescription().replaceAll("<[^>]+>", "").strip()
-                : (job.getTitle() + " position at " + job.getCompanyName()
-                   + " in " + (job.getLocationUae() != null ? job.getLocationUae() : "UAE"));
-        String snippet = base.length() > 160 ? base.substring(0, 157) + "…" : base;
-        return esc(snippet);
-    }
-
-    /**
-     * Builds a Schema.org {@code JobPosting} JSON-LD snippet.
-     * <p>
-     * Jackson handles all string escaping, including the {@code </script>}
-     * sequence that would otherwise break an inline {@code <script>} tag.
-     * Jackson's default string serializer escapes {@code <}, {@code >}, and
-     * {@code &} so the output is safe to embed directly in HTML.
-     */
-    private String buildJsonLd(Job job, String url) {
-        try {
-            ObjectNode root = objectMapper.createObjectNode();
-            root.put("@context", "https://schema.org/");
-            root.put("@type", "JobPosting");
-            root.put("title", job.getTitle() != null ? job.getTitle() : "");
-            root.put("datePosted", job.getCreatedAt() != null ? job.getCreatedAt().toLocalDate().toString() : "");
-
-            ObjectNode org = objectMapper.createObjectNode();
-            org.put("@type", "Organization");
-            org.put("name", job.getCompanyName() != null ? job.getCompanyName() : "");
-            root.set("hiringOrganization", org);
-
-            ObjectNode address = objectMapper.createObjectNode();
-            address.put("@type", "PostalAddress");
-            address.put("addressCountry", "AE");
-            if (job.getLocationUae() != null) {
-                address.put("addressLocality", job.getLocationUae());
-            }
-            ObjectNode location = objectMapper.createObjectNode();
-            location.put("@type", "Place");
-            location.set("address", address);
-            root.set("jobLocation", location);
-
-            root.put("directApply", true);
-            root.put("url", url);
-
-            return objectMapper.writeValueAsString(root);
-        } catch (Exception e) {
-            log.warn("Failed to serialize JSON-LD for job id={}", job.getId(), e);
-            return "{}";
-        }
-    }
-
-    /** HTML-escape for attribute values. */
-    private static String esc(String s) {
-        if (s == null) return "";
-        return s.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;");
+        java.time.OffsetDateTime posted = job.getPostedAt() != null ? job.getPostedAt() : job.getCreatedAt();
+        boolean appliesOnSource = (job.getApplyUrl() != null && !job.getApplyUrl().isBlank())
+                || (job.getLinkedinUrl() != null && !job.getLinkedinUrl().isBlank());
+        return JobSeoPage.html(new JobSeoPage.Fields(
+                job.getId(),
+                job.getTitle(),
+                job.getCompanyName(),
+                job.getLocationUae(),
+                job.getDescription(),
+                posted != null ? posted.toLocalDate().toString() : null,
+                job.getExpiresAt() != null ? job.getExpiresAt().format(DateTimeFormatter.ISO_OFFSET_DATE_TIME) : null,
+                job.getJobType(),
+                job.isRemoteUae(),
+                appliesOnSource,
+                job.getCompanyLogoUrl(),
+                publicUrl));
     }
 
     private void appendUrl(StringBuilder xml, String path, String lastmod, String changefreq, String priority) {
