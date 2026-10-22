@@ -19,14 +19,15 @@ import java.util.Set;
  * source on demand.  The trigger server runs on the same host as the scraper
  * at {@code app.scraper.trigger-url} (default: http://localhost:3001).
  *
- * Sources: bayt | naukrigulf | gulftalent | linkedin
+ * Sources: bayt | naukrigulf | gulftalent | linkedin | indeed
+ * (keep in sync with VALID_SOURCES in scraper/src/trigger-server.ts and the admin dashboard)
  */
 @Slf4j
 @Service
 public class PlaywrightTriggerService {
 
     private static final Set<String> VALID_SOURCES =
-            Set.of("bayt", "naukrigulf", "gulftalent", "linkedin");
+            Set.of("bayt", "naukrigulf", "gulftalent", "linkedin", "indeed");
 
     private final RestTemplate http;
 
