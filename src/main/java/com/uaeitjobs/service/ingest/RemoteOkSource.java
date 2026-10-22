@@ -1,6 +1,7 @@
 package com.uaeitjobs.service.ingest;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.uaeitjobs.service.ingest.pipeline.MojibakeRepair;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
@@ -90,12 +91,13 @@ public class RemoteOkSource implements JobIngestSource {
 
     private IngestedJob mapOne(JsonNode node) {
         String externalId = node.path("id").asText(null);
-        String title = node.path("position").asText(null);
-        String company = node.path("company").asText("Remote employer");
+        // RemoteOK publishes much of its text already mis-decoded ("â" for a right quote); repair it.
+        String title = MojibakeRepair.fix(node.path("position").asText(null));
+        String company = MojibakeRepair.fix(node.path("company").asText("Remote employer"));
         String url = node.path("url").asText(null);
         if (externalId == null || title == null || url == null) return null;
 
-        String description = sanitize(node.path("description").asText(""));
+        String description = MojibakeRepair.fix(sanitize(node.path("description").asText("")));
         if (description.isBlank()) description = title;
 
         Integer salaryMin = node.has("salary_min") && !node.get("salary_min").isNull()
