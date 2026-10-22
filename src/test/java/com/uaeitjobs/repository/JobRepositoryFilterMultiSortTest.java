@@ -112,6 +112,29 @@ class JobRepositoryFilterMultiSortTest extends AbstractIntegrationTest {
                 .containsExactly(olderHighRelevanceJobId, newerLowRelevanceJobId);
     }
 
+    @Test
+    void newestSortRanksThinDescriptionsBelowSlightlyOlderFullOnes() {
+        // Thin: posted now, but only a one-line summary (< 300 chars).
+        Job thin = newJob("thin-" + searchToken, "Support Engineer", "Short summary about " + searchToken + ".");
+        thin = jobRepository.save(thin);
+        backdateCreatedAt(thin.getId(), OffsetDateTime.now());
+
+        // Full: a day older, but a real description (> 300 chars).
+        Job full = newJob("full-" + searchToken, "Platform Engineer",
+                "We use " + searchToken + " every day. " + "Responsibilities include building and running services. ".repeat(10));
+        full = jobRepository.save(full);
+        backdateCreatedAt(full.getId(), OffsetDateTime.now().minusDays(1));
+
+        var page = jobRepository.filterMulti(
+                "", "", "", "", null, null, "", null, null,
+                "newest", searchToken, "", "", "", null, "", PAGE);
+
+        assertThat(page.getContent().get(0).getId())
+                .as("the older job with a full description outranks the newer thin one")
+                .isEqualTo(full.getId());
+        assertThat(page.getContent()).extracting(Job::getId).contains(thin.getId());
+    }
+
     private void backdateCreatedAt(Long jobId, OffsetDateTime createdAt) {
         // created_at is @CreationTimestamp/updatable=false, so it can't be set
         // through the entity — a raw UPDATE bypasses Hibernate to control it
